@@ -7,7 +7,7 @@
 |------|----------------|----------|
 | Reviewer | Ensure code consistency and that no error are present in the code of an other team member | Everyone |
 | DevOps/Infra Engineer | Sets up and maintain CI/CD pipeline as well as dev and prod infrastructure | Aubry |
-| Release Manager | Handles releases, responsible for validating PRs of the `realease` branch | - |
+| Release Manager | Handles releases, responsible for validating PRs of the `release` branch | - |
 | PO, PM | Sprint coordinator, manages the product backlog, assign tasks to team members at the beginning of every sprint, responsible of the daily message to the client | - |
 | Documentation/QA Lead | Keeps API documentation up to date, maintains README, manages integration testing | - |
 
