@@ -1,3 +1,4 @@
+## Common Rust application architectures 
 #### Tokio + async/await (boucle d’événements)
 - _Explication brève_ → Le runtime (Tokio) gère toutes les connexions de manière asynchrone grâce à une boucle d’événements, au lieu d’avoir 1 thread par client
 - _Avantages_ → rapide, supporte beaucoup de clients
@@ -20,3 +21,26 @@
 - _Explication brève_ → Un même programme peut écouter plusieurs ports (22=SSH, 80=HTTP, etc.) ou partager un port et négocier quel protocole utiliser
 - _Avantages_ → centralise plusieurs services dans un seul serveur, mutualisation des ressources
 - _Désavantages_ → plus complexe, un plantage fait tomber tous les services, erreurs possibles si on mélange plusieurs protocoles sur un port
+
+## Crates ecosystem options
+- tokio
+	- Runtime
+	- Lien: https://crates.io/crates/tokio
+- tokio-rustls
+	- Tokio mais sous TLS
+	- Lien: https://crates.io/crates/tokio-rustls
+- hyper
+	- serveur/client HTTP
+	- Lien: https://crates.io/crates/hyper
+- thrussh
+	- implémentation SSH en Rust
+	- Lien: https://crates.io/crates/thrussh
+- async-smtp
+	- client SMTPasyn
+	- Lien: https://crates.io/crates/async-smtp
+- imap
+	- client IMAP
+	- Lien: https://crates.io/crates/imap
+- bevy
+	- moteur de jeu pour l'architecture ECS, donc utile dans le cas ou utiliserait une partie de cette architecture
+	- Lien: https://crates.io/crates/bevy
