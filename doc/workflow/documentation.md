@@ -14,14 +14,11 @@ Provide detailed information about the changes made to the documentation.
 
 Explain why these documentation changes are necessary.
 
-## Review Checklist
+## Checklist
 
 - [ ] Spelling and grammar are correct
-
 - [ ] All links are working and correct
-
 - [ ] Documentation accurately reflects the current state of the project
-
 - [ ] Changes are clearly highlighted and easy to understand
 
 ## Additional Notes

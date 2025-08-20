@@ -20,15 +20,13 @@ Describe any implications this fix may have on other parts of the application.
 
 ## Testing Strategy
 
-Explain how the fix has been tested to ensure the bug is resolved without introducing new issues.
-
+Explain how the fix has been tested to ensure the bug is resolved without
+introducing new issues.
 
 ## Checklist
 
 - [ ] The fix has been locally tested
-
 - [ ] New unit tests have been added to prevent future regressions
-
 - [ ] The documentation has been updated if necessary
 
 ## Additional Notes
