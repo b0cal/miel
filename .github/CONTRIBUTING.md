@@ -10,4 +10,5 @@ Once we'll get your message, you'll be added to the dev team of the project.
 In the meantime all documentation regarding dev. guidelines, who is responsible for what, documentation etc. can be found [here](https://github.com/b0cal/miel/tree/doc/readme/doc)
 
 
-> "Every time you find yourself here, it's because you chose to come back"
+> "Every time you find yourself here, it's because you chose to come back" 
+> Mark S.
