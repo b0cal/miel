@@ -7,16 +7,16 @@
 |------|----------------|----------|
 | Reviewer | Ensure code consistency and that no error are present in the code of an other team member | Everyone |
 | DevOps/Infra Engineer | Sets up and maintain CI/CD pipeline as well as dev and prod infrastructure | Aubry |
-| Release Manager | Handles releases, responsible for validating PRs of the `release` branch | - |
-| PO, PM | Sprint coordinator, manages the product backlog, assign tasks to team members at the beginning of every sprint, responsible of the daily message to the client | - |
-| Documentation/QA Lead | Keeps API documentation up to date, maintains README, manages integration testing | - |
+| Release Manager | Handles releases, responsible for validating PRs of the `release` branch | Drin |
+| PO, PM | Sprint coordinator, manages the product backlog, assign tasks to team members at the beginning of every sprint, responsible of the daily message to the client | Aubry |
+| Documentation Lead, QA Lead | Keeps API documentation up to date, maintains README, Integration and performance testing coordinator | Nils |
+| Dev Engineer | Dev the app | Everyone |
+| Software Architect | Responsible for software conception | Esteban |
 
 
 Every team member is responsible for unit testing on its own features before delivering them
 
 Every team member is responsible for documenting its own features
-
-TODO: Once architecture is designed, add responsibilities of every part of the architecture
 
 Even if any team member could work on any part of the application, every member is responsible for a part of the architecture
 
@@ -25,9 +25,11 @@ Even if any team member could work on any part of the application, every member 
 ### Channels
 Keeping good and efficient communication between team members is key to consistency, therefore two main communication channels have been adopted. 
 
-First the Whatsapp group for fast questions, comments or other that need fast answers (less than an hour). 
+Daily meetings are attended through the Teams team
 
 Then for questions or remarks that are worth for documenting the project timeline (architecture, conception, etc.) add comments to your issues and ping people you want help from. On the other hand don't forget to frequently verify your Github notifications so you don't miss them
+
+
 
 
 ### Submitting a PR
@@ -40,8 +42,6 @@ Actual templates lie in `.github/pull_request_template/` and can be used directl
 - `?template=feature.md` for feature addition
 - `?template=bugfix.md` for bugfixes
 - `?template=documentation.md` for documentation updates
-
-TODO: Create issue to add those files in the right dir 
 
 ## Agile methodology
 
@@ -69,10 +69,9 @@ At the end of every sprint, useful to plan next activities, discuss actual statu
 
 We use a Kanban to visualize work that needs to be done for the sprint in progress
 
-4 columns:
-- Backlog: Contains the whole backlog of the sprint
-- Doing: Tasks in progress
-- Review: Waiting for review
+3 columns:
+- Todo: Contains the whole backlog of the sprint
+- In progress: Tasks in progress
 - Done: PR has been closed, tests passed
 
-
+To have a more global overview of the advancement, see the [roadmap](https://github.com/orgs/b0cal/projects/1) in the Github Project
