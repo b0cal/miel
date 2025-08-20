@@ -26,7 +26,7 @@ The branching model is structured as followed:
 
 `hotfix`: When issue detected in `main` branch, create a hotfix branch from main, once completed, merge into both `develop` and `main`
 
-![More info here](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow)
+[More info here](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow)
 
 ## Commit message convention
 
@@ -49,7 +49,7 @@ With the following structural elements:
   - Non exhaustive list: *build*, *doc*, *refactor*, *test* 
 - `footers` other than *BREAKING CHANGE* should follow a `key: value` format
 
-![More info](https://www.conventionalcommits.org/en/v1.0.0/#summary)
+[More info](https://www.conventionalcommits.org/en/v1.0.0/#summary)
 
 ## Documenting
 
@@ -103,20 +103,21 @@ To generate the documentation based off of those comments simply run `cargo doc`
 
 As we're working with a small team, handling very small PR is not manageable, try to make PRs as small as possible (so no full features at once), but avoid PRs of less than 50 lines of code. Aim is to point out issues ASAP without overloading the team with review duties
 
+Every PR should be reviewed and validated by an other person than the one opening the PR. We follow a *squash and merge* logic so small commits are taken as one
+
 Every PR from `feature` into `develop` should be reviewed by at least one other team member
 
 Every change made to `main` or `release` branches should be reviewed by all team members
 
 Rotate reviewers on every other PR so the team keeps a global overview of the project
 
-![More info](https://blog.mergify.com/pull-request-review-best-practices-code-excellence/)
+[More info](https://blog.mergify.com/pull-request-review-best-practices-code-excellence/)
 
 ## Testing expectations
 
 As Rust integrates testing well, adopting a test-driven development process should benefit keeping error rate low
 
 *Reminder:* You start by writing a test that won't pass (feature not implemented), then you implement the minimal code to make the test pass, then you refactor and add whatever while keeping tests passing
-
 
 In optimal situation, every Rust file should contain a unit testing section
 
