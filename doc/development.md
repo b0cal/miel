@@ -51,6 +51,54 @@ With the following structural elements:
 
 ![More info](https://www.conventionalcommits.org/en/v1.0.0/#summary)
 
+## Documenting
+
+Keeping the codebase documented benefits every team member and future contributors. Do your best to keep clean and clear documentation for every feature you submit.
+
+Documentation should follow rustdoc conventions:
+
+> rustdoc comments supports markdown notation
+
+**Commenting crates (at a global level):**
+```
+//! # Crate
+//!
+//! Comment describing the crate and how to use it
+```
+
+**Commenting modules, functions, structs, etc.:**
+```
+/// [short sentence explaining what it is]
+/// [more detailed explanation]
+/// [at least one code example that user can copy/paste to try it]
+/// [even more advanced explanations if necessary]
+```
+
+Here are some examples of headings commonly used in documentation:
+
+```
+# Examples
+
+How to use the function, if code blocks are added, `cargo test` will run these chunks of code too, so go for it !
+
+# Panics
+
+Scenarios in which function could panic, so user of the function knows in which situation not to use it
+
+# Errors
+
+If function returns a `Result`, describe here the kinds of errors that might occur and what conditions might cause those errors to be returned.
+
+# Safety
+
+If function is `unsafe` explain why
+```
+
+### Generate and access the documentation in the nice way
+
+To generate the documentation based off of those comments simply run `cargo doc`. Add `--open` to simultaneously open your browser and browse the HTML formatted version of the documentation.
+
+
 ## Code review and pull requests
 
 As we're working with a small team, handling very small PR is not manageable, try to make PRs as small as possible (so no full features at once), but avoid PRs of less than 50 lines of code. Aim is to point out issues ASAP without overloading the team with review duties
