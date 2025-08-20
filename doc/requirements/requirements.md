@@ -29,7 +29,7 @@ The software must meet the following functional requirements:
 The software must meet the following non-functional requirements:
 
 - Run on a single host machine with at least 16GB of RAM and 4 CPU cores.
-- Be able deployable on a Debian 12 or later host with Docker 27 or later.
+- Be able to deploy lightweight containers using Linux namespaces.
 - The software must not introduce a network latency greater than 100ms when an
   attacker interacts with the honeypot.
 - The software must scale the number of available service sessions for attackers
