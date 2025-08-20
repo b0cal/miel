@@ -1,4 +1,6 @@
-<img src="logo.png" width=100 style="align: center;">
+<div align="center">
+  <img src="logo.png" width=300>
+</div>
 
 # miel
 
