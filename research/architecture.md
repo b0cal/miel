@@ -33,7 +33,7 @@
 	- serveur/client HTTP
 	- Lien: https://crates.io/crates/hyper
 - thrussh
-	- implémentation SSH en Rust
+	- Si on veut implémenter notre propre SSH en Rust
 	- Lien: https://crates.io/crates/thrussh
 - async-smtp
 	- client SMTPasyn
@@ -41,6 +41,9 @@
 - imap
 	- client IMAP
 	- Lien: https://crates.io/crates/imap
+- bollard
+	- Bibliothèque cliente Rust asynchrone pour l'API Docker
+	- Lien: https://crates.io/crates/bollard
 - bevy
 	- moteur de jeu pour l'architecture ECS, donc utile dans le cas ou utiliserait une partie de cette architecture
 	- Lien: https://crates.io/crates/bevy
