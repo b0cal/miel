@@ -2,6 +2,7 @@
 
 ## Branching model
 
+
 We follow a Gitflow branching model for its clear history and its structured release management.
 
 The branching model is structured as followed:
@@ -125,3 +126,5 @@ Integration testing should be done at the same level as the binary code (so not 
 
 Minimal should be integration testing to prevent error propagation
 
+Performance testing must be done by integrating tools in the source code and
+using conditional compilation to run them only in debug mode.
