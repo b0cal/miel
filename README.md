@@ -1,4 +1,4 @@
-<img src="logo.png"; width=100; style="align: center;">
+<img src="logo.png" width=100 style="align: center;">
 
 # miel
 
