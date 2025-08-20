@@ -27,6 +27,14 @@ Today's available solutions allow to either masquerade one service at a time or 
 
 ***miel*** seeks to deliver a chameleon research honeypot. One capable of serving the corresponding service that matches the attacker's expectations, providing richer interaction data for analysis.
 
+### How?
+
+- Rust🦀 guarantees us memory safety without performance cost 
+- [tokio🗼](https://tokio.rs/) asynchronous runtime performs efficient async I/O, supports large amount of protocols and has built-in security features such as robust timeout handling preventing resource exhaustion
+- [systemd-nspawn](https://wiki.archlinux.org/title/Systemd-nspawn) handles the containerization of the services
+
+> These are the main components used in the project, for a more exhaustive list, see the [architecture](/doc/research/architecture.md#rust-libraries) description
+
 ## Contributing
 
 Please see CONTRIBUTING tab
