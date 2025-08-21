@@ -17,6 +17,7 @@
 - Let miel adapt to the attacker's request to serve him with the right service
 - Simply add new services with configuration files
 - Link a database to store paquet trace, shell interactions, metadata, etc.
+- Ships with pre-filled ssh and http configuration files
 
 ### Why?
 Honeypots can be used in two situations. First to deceive attackers and avoid real infrastructure to be compromised. Secondly to intercept and retain attacker's connections in a MiTM way in order to analyze and collect interactions, IoC or payloads. 
