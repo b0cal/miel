@@ -14,11 +14,11 @@
 | Software Architect | Responsible for software conception | Esteban |
 
 
-Every team member is responsible for unit testing on its own features before delivering them
+- Every team member is responsible for unit testing on its own features before delivering them
 
-Every team member is responsible for documenting its own features
+- Every team member is responsible for documenting its own features
 
-Even if any team member could work on any part of the application, every member is responsible for a part of the architecture
+- Even if any team member could work on any part of the application, every member is responsible for a part of the architecture
 
 ## Communication
 
@@ -28,20 +28,6 @@ Keeping good and efficient communication between team members is key to consiste
 Daily meetings are attended through the Teams team
 
 Then for questions or remarks that are worth for documenting the project timeline (architecture, conception, etc.) add comments to your issues and ping people you want help from. On the other hand don't forget to frequently verify your Github notifications so you don't miss them
-
-
-
-
-### Submitting a PR
-Depending on the type of PRs (feature addition, bugfix, documentation update) the corresponding template should be used.
-
-
-(Could be added in the `Contributing` section of the README)
-
-Actual templates lie in `.github/pull_request_template/` and can be used directly when opening a PR by adding the corresponding query parameter to the URL:
-- `?template=feature.md` for feature addition
-- `?template=bugfix.md` for bugfixes
-- `?template=documentation.md` for documentation updates
 
 ## Agile methodology
 
