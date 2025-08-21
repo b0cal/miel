@@ -6,7 +6,8 @@
 5. **FTP**: Anonymous connections/weak authentication, binary deposits
 
 
-# Complexité d'exposé chaque services
+# Complexity exposure of selected services
+We decided to honeypot SSH and HTTP(S) because these are currently the two most frequently attacked services. Here is a description of their exposure complexity
 ## SSH
 #### 1. Exposure complexity
 - Level: Basic
