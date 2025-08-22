@@ -67,3 +67,13 @@ dependencies = ["lint", "fmt", "webui-lint", "webui-format"]
 [tasks.fix]
 description = "Run all code quality fixes"
 dependencies = ["fmt-fix", "webui-format-fix"]
+
+[tasks.doc-lint]
+description = "Check documentation formatting"
+cwd = "doc"
+script = ["markdownlint-cli2 **/*.md"]
+
+[tasks.doc-lint-fix]
+description = "Fix documentation formatting"
+cwd = "doc"
+script = ["markdownlint-cli2 --fix **/*.md"]
