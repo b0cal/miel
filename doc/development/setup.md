@@ -105,9 +105,9 @@ If all commands succeed, the environment has been set up correctly.
 
 ## Web development configuration
 
-The project makes use of HTML, CSS and JavaScript for the web UI. To install the
-required tools, run the web setup script:
+The project makes use of NodeJS for the web UI. To install the required tools,
+run the web setup script:
 
 ```bash
-./scripts/setup_rust.sh
+./scripts/setup_node.sh
 ```
