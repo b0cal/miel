@@ -1,0 +1,17 @@
+[tasks.dev]
+description = "Development build (watch mode)"
+workspace = false
+script = ["concurrently"]
+
+[tasks.prod]
+description = "Production build"
+workspace = false
+script = [
+  "cd src/webui && npm ci && npm run build",
+  "cd src/core && cargo build --release",
+]
+
+[tasks.test]
+description = "Run backend tests"
+workspace = false
+script = ["cd src/core && cargo test"]
