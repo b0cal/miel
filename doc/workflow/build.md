@@ -113,6 +113,16 @@ cargo make fix
 
 Use this locally before committing to ensure code is properly formatted.
 
+### Documentation linting
+
+Markdown documentation is linted with `markdownlint`:
+
+```sh
+cargo make doc-lint
+# or
+cargo make doc-lint-fix
+```
+
 ### Tasks summary
 
 | Task           | Description                     | Usage              |
@@ -122,6 +132,7 @@ Use this locally before committing to ensure code is properly formatted.
 | `test`         | Run Rust tests                  | Local/CI testing   |
 | `code-quality` | Check lint/format (CI)          | CI/code review     |
 | `fix`          | Auto-fix formatting (developer) | Local development  |
+| `doc`          | Documentation linting           | Local/CI           |
 
 ## Developer workflow
 

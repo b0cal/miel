@@ -111,3 +111,15 @@ run the web setup script:
 ```bash
 ./scripts/setup_node.sh
 ```
+
+## Documentation configuration
+
+We make use of Markdown for documentation throughout the project. To install the
+required linting and formatting tools, run the docs setup script:
+
+```bash
+./scripts/setup_markdown.sh
+```
+
+**Note**: you **MUST** install NodeJS through the `setup_node.sh` script first
+as this script depends on NodeJS being available.
