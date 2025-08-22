@@ -93,11 +93,6 @@ found (does not auto-fix):
 cargo make code-quality
 ```
 
-- Runs `cargo fmt` (Rust formatting check)
-- Runs `cargo clippy -- -D warnings` (Rust lint)
-- Runs `npm run lint` (webUI lint)
-- Runs `npm run format -- --check` (webUI formatting check)
-
 Use this in CI to enforce code standards.
 
 #### Auto-fix formatting (for developers)
