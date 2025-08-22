@@ -1,17 +1,69 @@
 [tasks.dev]
 description = "Development build (watch mode)"
-workspace = false
 script = ["concurrently"]
 
 [tasks.prod]
 description = "Production build"
-workspace = false
 script = [
   "cd src/webui && npm ci && npm run build",
   "cd src/core && cargo build --release",
 ]
 
+[tasks.clean]
+description = "Clean build artifacts"
+cwd = "src/core"
+command = "cargo"
+args = ["clean"]
+
+[tasks.core-test]
+description = "Run Rust tests"
+cwd = "src/core"
+script = ["cargo test"]
+
+[tasks.webui-test]
+description = "Run Web UI tests"
+cwd = "src/webui"
+script = ["npm ci && npm test"]
+
 [tasks.test]
-description = "Run backend tests"
-workspace = false
-script = ["cd src/core && cargo test"]
+clear = true
+description = "Run all tests"
+dependencies = ["core-test", "webui-test"]
+
+[tasks.fmt]
+description = "Check Rust code formatting"
+cwd = "src/core"
+script = ["cargo fmt"]
+
+[tasks.fmt-fix]
+description = "Fix Rust code formatting"
+cwd = "src/core"
+script = ["cargo fmt"]
+
+[tasks.lint]
+description = "Check Rust code linting"
+cwd = "src/core"
+script = ["cargo clippy -- -D warnings"]
+
+[tasks.webui-lint]
+description = "Check Web UI code linting"
+cwd = "src/webui"
+script = ["npm run lint"]
+
+[tasks.webui-format]
+description = "Check Web UI code formatting"
+cwd = "src/webui"
+script = ["npm run format -- --check"]
+
+[tasks.webui-format-fix]
+description = "Fix Web UI code formatting"
+cwd = "src/webui"
+script = ["npm run format"]
+
+[tasks.code-quality]
+description = "Run all code quality checks"
+dependencies = ["lint", "fmt", "webui-lint", "webui-format"]
+
+[tasks.fix]
+description = "Run all code quality fixes"
+dependencies = ["fmt-fix", "webui-format-fix"]
