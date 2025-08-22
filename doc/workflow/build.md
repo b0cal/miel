@@ -68,14 +68,67 @@ as-is.
 
 ### Testing
 
-Run Rust tests:
+Run all tests with:
 
 ```sh
 cargo make test
 ```
+
+Tasks for testing individual components are also available:
+
+- `core-test`: runs only Rust tests.
+- `webui-test`: runs only webUI tests.
+
+### Code Quality and Formatting
+
+We use dedicated tasks to check and fix code quality for both Rust and webUI
+code.
+
+#### Code Quality check
+
+Checks formatting and linting for both Rust and webUI. Fails if any issues are
+found (does not auto-fix):
+
+```sh
+cargo make code-quality
+```
+
+- Runs `cargo fmt` (Rust formatting check)
+- Runs `cargo clippy -- -D warnings` (Rust lint)
+- Runs `npm run lint` (webUI lint)
+- Runs `npm run format -- --check` (webUI formatting check)
+
+Use this in CI to enforce code standards.
+
+#### Auto-fix formatting (for developers)
+
+Automatically fixes formatting issues in both Rust and webUI code:
+
+```sh
+cargo make fix
+```
+
+- Runs `cargo fmt` (Rust auto-format)
+- Runs `npm run format` (webUI auto-format)
+
+Use this locally before committing to ensure code is properly formatted.
+
+### Tasks summary
+
+| Task           | Description                     | Usage              |
+| -------------- | ------------------------------- | ------------------ |
+| `dev`          | Development build/watch         | Local development  |
+| `prod`         | Production build                | Release/deployment |
+| `test`         | Run Rust tests                  | Local/CI testing   |
+| `code-quality` | Check lint/format (CI)          | CI/code review     |
+| `fix`          | Auto-fix formatting (developer) | Local development  |
 
 ## Developer workflow
 
 - **Rust-only changes**: work inside `src/core`, run `cargo run`.
 - **WebUI-only changes**: work inside `src/webui`, run `npm run dev`.
 - **Full-stack changes / final builds**: run `cargo make prod`.
+
+```
+
+```
