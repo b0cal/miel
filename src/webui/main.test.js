@@ -1,7 +1,9 @@
-const assert = require('chai').assert;
+/* eslint-env node, mocha */
 
-describe('main.js', function() {
-  it('should run as a Node app', function() {
+const assert = require("chai").assert;
+
+describe("main.js", function () {
+  it("should run as a Node app", function () {
     assert.isTrue(true);
   });
 });
