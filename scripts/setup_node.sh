@@ -19,6 +19,9 @@ fi
 
 # Install the node version specified in .nvmrc
 nvm install
-pushd src/webui
+
+pushd src/webui || exit
 npm install
-popd
+popd || exit
+
+echo "NodeJS setup complete. Please restart your terminal to apply changes."
