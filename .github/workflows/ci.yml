@@ -46,10 +46,6 @@ jobs:
       - name: Lint and format code
         run: cargo make fmt
 
-      - name: Lint documentation
-        run: cargo make doc-lint
-        continue-on-error: true
-
       - name: Audit source code
         run: cargo make audit
 
