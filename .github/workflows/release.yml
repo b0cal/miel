@@ -47,7 +47,7 @@ jobs:
       - name: Archive build artifacts
         run: |
           mkdir -p artifacts
-          cp target/release/miel artifacts/
+          cp src/core/target/release/miel artifacts/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
