@@ -33,12 +33,12 @@ jobs:
 
       # Install cargo-make if missing
       - name: Install cargo-make if missing
-        run: |
-          if ! command -v cargo-make >/dev/null 2>&1; then
-            cargo install cargo-make
-          fi
+        run: if ! command -v cargo-make >/dev/null 2>&1; then cargo install cargo-make; fi
 
-      - name: Install npm dependencies
+      - name: Install cargo-audit if missing
+        run: if ! command -v cargo-audit >/dev/null 2>&1; then cargo install cargo-audit; fi
+
+      - name: Install global npm dependencies
         run: npm install -g markdownlint-cli2
 
       - name: Lint and format code
@@ -78,10 +78,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-make if missing
-        run: |
-          if ! command -v cargo-make >/dev/null 2>&1; then
-            cargo install cargo-make
-          fi
+        run: if ! command -v cargo-make >/dev/null 2>&1; then cargo install cargo-make; fi
 
       - name: Run Rust & NodeJS tests
         run: cargo make test
@@ -108,10 +105,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-make if missing
-        run: |
-          if ! command -v cargo-make >/dev/null 2>&1; then
-            cargo install cargo-make
-          fi
+        run: if ! command -v cargo-make >/dev/null 2>&1; then cargo install cargo-make; fi
 
       - name: Build production binary
         run: cargo make prod
