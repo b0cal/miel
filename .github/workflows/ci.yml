@@ -2,9 +2,13 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore:
+      - "doc/**"
   push:
     branches: [main, dev]
     tags: ["v*"]
+    paths-ignore:
+      - "doc/**"
 
 permissions:
   contents: write

@@ -29,7 +29,8 @@ The CI/CD pipeline is implemented in a single workflow file:
 
 - **`.github/workflows/ci.yml`** (CI workflow): lint, format, static analysis,
   tests, builds, and releases. Triggered on pull requests and pushes to `main`
-  and `dev` branches, with special handling for version tags.
+  and `dev` branches, with special handling for version tags. This workflow does
+  **NOT** run on changes to documentation files only (`/doc` directory).
 
 ### Workflow Structure
 
