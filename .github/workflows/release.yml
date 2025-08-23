@@ -1,9 +1,10 @@
 name: Release
 
 on:
-  push:
-    # tags:
-    #   - "v*.*.*" # Trigger only on semver-style tags
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
 
 permissions:
   contents: write
@@ -13,51 +14,22 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-
+    if: >
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          startsWith(github.event.workflow_run.head_branch, 'refs/tags/v') }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up cargo-make
-        uses: davidB/rust-cargo-make@v1
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: src/webui/package-lock.json
+          name: build-output
+          path: target/release/
 
-      - name: Restore cargo cache
-        uses: actions/cache@v3
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cargo/bin
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build production binary
-        run: cargo make prod
-
-      - name: Archive build artifacts
-        run: |
-          mkdir -p artifacts
-          cp src/core/target/release/miel artifacts/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-artifacts
-          path: artifacts/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
+          files: target/release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
