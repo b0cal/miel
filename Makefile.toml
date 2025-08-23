@@ -6,7 +6,7 @@ script = ["concurrently"]
 description = "Production build"
 script = [
   "cd src/webui && npm ci && npm run build",
-  "cd src/core && cargo build --release",
+  "cd ../core && cargo build --release",
 ]
 
 [tasks.clean]
