@@ -10,11 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
-      # Rust setup
       - uses: dtolnay/rust-toolchain@stable
-
-      # NodeJS setup
+      - uses: davidB/rust-cargo-make@v1
       - uses: actions/setup-node@v3
         with:
           node-version-file: .nvmrc
@@ -30,10 +27,6 @@ jobs:
             ~/.cargo/bin
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      # Install cargo-make if missing
-      - name: Install cargo-make if missing
-        run: if ! command -v cargo-make >/dev/null 2>&1; then cargo install cargo-make; fi
 
       - name: Install cargo-audit if missing
         run: if ! command -v cargo-audit >/dev/null 2>&1; then cargo install cargo-audit; fi
@@ -62,6 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+      - uses: davidB/rust-cargo-make@v1
       - uses: actions/setup-node@v3
         with:
           node-version-file: .nvmrc
@@ -77,11 +71,11 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install cargo-make if missing
-        run: if ! command -v cargo-make >/dev/null 2>&1; then cargo install cargo-make; fi
+      - name: Run Rust tests
+        run: cargo make core-test
 
-      - name: Run Rust & NodeJS tests
-        run: cargo make test
+      - name: Run NodeJS tests
+        run: cargo make webui-test
 
   build:
     runs-on: ubuntu-latest
@@ -103,9 +97,6 @@ jobs:
             ~/.cargo/bin
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Install cargo-make if missing
-        run: if ! command -v cargo-make >/dev/null 2>&1; then cargo install cargo-make; fi
 
       - name: Build production binary
         run: cargo make prod
