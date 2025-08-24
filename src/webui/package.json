@@ -1,0 +1,23 @@
+{
+  "name": "miel-webui",
+  "engines": {
+    "npm": ">=10.0.0",
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "node --watch main.js",
+    "test": "mocha **/*.test.js",
+    "build": "echo 'miel-webui build script'",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "chai": "^6.0.0",
+    "eslint": "^9.33.0",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^16.3.0",
+    "mocha": "^11.7.1",
+    "prettier": "^3.6.2"
+  }
+}

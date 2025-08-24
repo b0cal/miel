@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - "doc/**"
+  push:
+    branches: [main, dev]
+    tags: ["v*"]
+    paths-ignore:
+      - "doc/**"
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: davidB/rust-cargo-make@v1
+      - uses: actions/setup-node@v3
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/webui/package-lock.json
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-audit if missing
+        run: if ! command -v cargo-audit >/dev/null 2>&1; then cargo install cargo-audit; fi
+
+      - name: Install global npm dependencies
+        run: npm install -g markdownlint-cli2
+
+      - name: Lint and format code
+        run: cargo make fmt
+
+      - name: Audit source code
+        run: cargo make audit
+
+      - name: Run CodeQL security analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: rust, javascript
+
+      - name: Build for CodeQL analysis
+        run: cargo make prod
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  test:
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: davidB/rust-cargo-make@v1
+      - uses: actions/setup-node@v3
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/webui/package-lock.json
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run Rust tests
+        run: cargo make core-test
+
+      - name: Run NodeJS tests
+        run: cargo make webui-test
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v3
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/webui/package-lock.json
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build production binary
+        run: cargo make prod
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: src/core/target/release/miel
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: src/core/target/release
+
+      - name: Display structure of downloaded files
+        run: ls -R
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: src/core/target/release/miel
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

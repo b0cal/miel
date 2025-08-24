@@ -1,0 +1,93 @@
+[tasks.dev]
+description = "Development build (watch mode)"
+script = ["concurrently"]
+
+[tasks.prod]
+description = "Production build"
+script = [
+  "cd src/webui && npm ci && npm run build",
+  "cd ../core && cargo build --release",
+]
+
+[tasks.clean]
+description = "Clean build artifacts"
+cwd = "src/core"
+command = "cargo"
+args = ["clean"]
+
+[tasks.core-test]
+description = "Run Rust tests"
+cwd = "src/core"
+script = ["cargo test"]
+
+[tasks.webui-test]
+description = "Run Web UI tests"
+cwd = "src/webui"
+script = ["npm ci && npm test"]
+
+[tasks.test]
+clear = true
+description = "Run all tests"
+dependencies = ["core-test", "webui-test"]
+
+[tasks.fmt]
+description = "Check Rust code formatting"
+cwd = "src/core"
+script = ["cargo fmt"]
+
+[tasks.fmt-fix]
+description = "Fix Rust code formatting"
+cwd = "src/core"
+script = ["cargo fmt"]
+
+[tasks.lint]
+description = "Check Rust code linting"
+cwd = "src/core"
+script = ["cargo clippy -- -D warnings"]
+
+[tasks.webui-lint]
+description = "Check Web UI code linting"
+cwd = "src/webui"
+script = ["npm run lint"]
+
+[tasks.webui-format]
+description = "Check Web UI code formatting"
+cwd = "src/webui"
+script = ["npm run format -- --check"]
+
+[tasks.webui-format-fix]
+description = "Fix Web UI code formatting"
+cwd = "src/webui"
+script = ["npm run format"]
+
+[tasks.code-quality]
+description = "Run all code quality checks"
+dependencies = ["lint", "fmt", "webui-lint", "webui-format"]
+
+[tasks.fix]
+description = "Run all code quality fixes"
+dependencies = ["fmt-fix", "webui-format-fix"]
+
+[tasks.doc-lint]
+description = "Check documentation formatting"
+cwd = "doc"
+script = ["markdownlint-cli2 **/*.md"]
+
+[tasks.doc-lint-fix]
+description = "Fix documentation formatting"
+cwd = "doc"
+script = ["markdownlint-cli2 --fix **/*.md"]
+
+[tasks.core-audit]
+description = "Audit dependencies for vulnerabilities"
+cwd = "src/core"
+script = ["cargo audit"]
+
+[tasks.webui-audit]
+description = "Audit Web UI dependencies for vulnerabilities"
+cwd = "src/webui"
+script = ["npm audit"]
+
+[tasks.audit]
+description = "Audit all dependencies for vulnerabilities"
+dependencies = ["core-audit", "webui-audit"]

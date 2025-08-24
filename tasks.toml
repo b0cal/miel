@@ -1,0 +1,5 @@
+[tasks.core]
+command = ["cargo", "watch", "-C", "src/core", "-x", "test", "-x", "run"]
+
+[tasks.webui]
+command = ["cd", "src/webui", "&&", "npm", "run", "dev"]
