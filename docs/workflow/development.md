@@ -120,6 +120,26 @@ Actual templates lie in `.github/pull_request_template/` and can be used directl
 >
 > If adding the query parameter in the URL doesn't work for you, verify that no other attributes are found at the end of the URL. If that's the case simply remove it and replace it with the *template* one
 
+## Release process
+
+![Release Process](./release-process.png)
+
+As shown in this diagram release process should be as followed:
+
+1. Fork a `release` from the `dev` branch once enough features are functioning
+2. Make last changes to the `release branch`
+  - No new features should be added
+  - Only bug-fixes, documentation generation
+  - Or other release-oriented tasks
+3. Once ready to ship, tag the last commit of the branch, as explained in [here](/doc/development/ci_cd.md#release-process)
+4. Create a new release from the [Create release](https://github.com/b0cal/miel/releases/new) page
+  - Select the release branch
+  - Pick the tag you created on point 3.
+  - Fill the release note with the [template]()
+  - 
+  
+
+
 ## Testing expectations
 
 As Rust integrates testing well, adopting a test-driven development process should benefit keeping error rate low
