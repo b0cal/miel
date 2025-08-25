@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B0CAL/MIEL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="termynal.css">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net/gh/mshaugh/nerdfont-webfonts@v3.3.0/build/firacode-nerd-font.css">
+</head>
+<body class="min-h-screen p-4">
+    <!-- HEADER -->
+    <div class="header-grid">
+      <div class="miel-logo light-tile flex items-end">
+          <pre class="multi-line sm:text-[4px] md:text-[4px] lg:text-[9.5px] text-black">
+██████╗  ██████╗  ██████╗ █████╗ ██╗             
+██╔══██╗██╔═████╗██╔════╝██╔══██╗██║             
+██████╔╝██║██╔██║██║     ███████║██║             
+██╔══██╗████╔╝██║██║     ██╔══██║██║             
+██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗        
+╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝        
+                                                 
+                ██╗███╗   ███╗██╗███████╗██╗     
+               ██╔╝████╗ ████║██║██╔════╝██║     
+              ██╔╝ ██╔████╔██║██║█████╗  ██║     
+             ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+            ██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
+            ╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝
+          </pre>
+          <pre class="single-line hidden text-black">
+██████╗  ██████╗  ██████╗ █████╗ ██╗         ██╗███╗   ███╗██╗███████╗██╗     
+██╔══██╗██╔═████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
+██████╔╝██║██╔██║██║     ███████║██║       ██╔╝ ██╔████╔██║██║█████╗  ██║     
+██╔══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
+╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝
+</pre>
+      </div>
+      <div class="text-1 dark-tile text-white">
+          <p>STOP GUESSIN'. START TRAPPIN'.</p>
+      </div>
+      <div class="github-logo dark-tile">
+        <a href="https://github.com/b0cal/miel/tree/main">
+          <img src="./github_logo.png" alt="Check us on GitHub!">
+        </a>
+      </div>
+    </div>
+
+    <!-- BODY -->
+    <div class="body-grid">
+      <div id="termynal" data-ty-startDelay="600" data-ty-typeDelay="30" data-ty-lineDelay="700" data-ty-progressChar="." data-termynal class="terminal dark-tile">
+        <span data-ty="input" data-ty-prompt="❯">miel start --services http,ssh</span>
+        <span data-ty>
+          <pre class="sm:text-[4px] md:text-[4px] lg:text-[9.5px] text-[#eea537]">
+██████╗  ██████╗  ██████╗ █████╗ ██╗             
+██╔══██╗██╔═████╗██╔════╝██╔══██╗██║             
+██████╔╝██║██╔██║██║     ███████║██║             
+██╔══██╗████╔╝██║██║     ██╔══██║██║             
+██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗        
+╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝        
+                                                 
+                ██╗███╗   ███╗██╗███████╗██╗     
+               ██╔╝████╗ ████║██║██╔════╝██║     
+              ██╔╝ ██╔████╔██║██║█████╗  ██║     
+             ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+            ██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
+            ╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝
+=================================================
+   B0CAL/MIEL Chameleon Research Honeypot v0.1   
+=================================================
+            </pre>
+        </span>
+        <span data-ty>[INFO] Initializing MIEL services...</span>
+        <span data-ty>[INFO] Validating service configuration...</span>
+        <span data-ty="progress"></span>
+        <span data-ty>[✓] HTTP service configuration validated</span>
+        <span data-ty>[✓] SSH service configuration validated</span>
+        <span data-ty>[✓] Database service is up</span>
+        <span data-ty></span>
+        <span data-ty>[INFO] Validating service configuration...</span>
+        <span data-ty="progress"></span>
+        <span data-ty>[✓] Port 8080 (HTTP) available</span>
+        <span data-ty>[✓] Port 2222 (SSH) available</span>
+        <span data-ty></span>
+        <span data-ty>Would you like to start the WebUI interface ?[y/N] :</span>
+        <span data-ty="input" data-ty-prompt="❯">y</span>
+        <span data-ty></span>
+        <span data-ty>[INFO] Starting services...</span>
+        <span data-ty>[INFO] Starting SSH daemon...</span>
+        <span data-ty>[✓] SSH service started on port 2222</span>
+        <span data-ty>[INFO] Starting HTTP server...</span>
+        <span data-ty>[✓] HTTP service started on port 8080</span>
+        <span data-ty>[INFO] Starting WebUI interface...</span>
+        <span data-ty>[✓] WebUI started on http://localhost:3000</span>
+        <span data-ty>
+          <pre>
+┌──────────────────────────────────────────────────────┐
+│                     SERVICE STATUS                   │
+├──────────────────────────────────────────────────────┤
+│ Service  │ Status  │ Port │ PID  │ Uptime │ Memory   │
+├──────────────────────────────────────────────────────┤
+│ HTTP     │ RUNNING │ 8080 │ 1247 │ 00:03  │ 45.2 MB  │
+│ SSH      │ RUNNING │ 2222 │ 1251 │ 00:02  │ 12.8 MB  │
+│ Database │ RUNNING │ 5432 │ 1243 │ 00:04  │ 128.4 MB │
+│ WebUI    │ RUNNING │ 3000 │ 1255 │ 00:01  │ 67.1 MB  │
+└──────────────────────────────────────────────────────┘
+          </pre>
+        </span>
+        <span data-ty>[INFO] All services started successfully!</span>
+        <span data-ty>[INFO] WebUI available at: http://localhost:3000</span>
+        <span data-ty>[INFO] API endpoint: http://localhost:8080/api</span>
+        <span data-ty>[INFO] SSH access: ssh admin@localhost -p 2222</span>
+        <span data-ty></span>
+        <span data-ty>[INFO] Use 'miel status' to check service health</span>
+        <span data-ty>[INFO] Use 'miel stop' to check service health</span>
+        <span data-ty>[INFO] Use 'miel logs <service>' to view service logs</span>
+      </div>
+
+      <div class="project-desc-1 dark-tile text-white">
+        <div class="title dark-tile-wout-shadow">WHAT'S UP WITH IT?</div>
+        <div class="first-desc dark-tile-wout-shadow">
+          <ul>
+            <li>✔ Expose realistic vulnerable services to uncover attacker behavior</li>
+            <li>✔ Adaptive deception that serves the right service at the right time.</li>
+            <li>✔ Effortlessly extend functionality with simple configuration files.</li>
+            <li>✔ Securely log every packet, shell interaction, and metadata in a database.</li>
+            <li>✔ Get started instantly with pre-configured SSH and HTTP honeypots.</li>
+          </ul>
+        </div>
+        <div ></div>
+        <div class="dark-tile-custom authors">
+          <div class="authors-title">AUTHORS</div>
+          <div class="name drin"><span class="first-two">>_</span> Drin</div>
+          <div class="name esteban"><span class="first-two">>_</span> Esteban</div>
+          <div class="name aubry"><span class="first-two">>_</span> Aubry</div>
+          <div class="name nils"><span class="first-two">>_</span> Nils</div>
+        </div>
+        <div class=""></div>
+
+      </div>
+
+      <div class="code-container light-tile">
+
+        <div class="version dark-tile-wout-shadow">
+          <pre class="text-[#eea537] sm:text-[5px] md:text-[15px] lg:text-[20px]">
+{
+    "version": "v0.1",
+    "release": "nectar",
+          </pre>
+        </div>
+        <div class="services dark-tile-wout-shadow">
+          <pre class="text-[#eea537] sm:text-[4px] md:text-[15px] lg:text-[20px]">
+    "services": {
+      "http", "ssh",
+    }
+}
+          </pre>
+        </div>
+      </div>
+
+      <div class="technologies">
+        <div class="rust light-tile">
+          <a href="https://www.rust-lang.org/fr">
+            <img src="./rust-logo.png" alt="Check us on GitHub!">
+          </a>
+        </div>
+        <div class="tokio light-tile">
+          <a href="https://tokio.rs/">
+            <img src="./tokio-logo.png" alt="Check us on GitHub!">
+          </a>
+        </div>
+        <div class="nspawn light-tile">
+          <a href="https://wiki.archlinux.org/title/Systemd-nspawn">
+            <img src="./nspawn-logo.png" alt="Check us on GitHub!">
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <script src="termynal.js" data-termynal-container="#termynal"></script>
+</body>
+</html>

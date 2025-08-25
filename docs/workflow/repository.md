@@ -4,7 +4,7 @@ The project follows a modular monolithic design but the source code is organized
 into logical subsystems under the `src/` directory. This makes it easy to
 navigate, extend, and eventually refactor into separate services if needed.
 
-At the top level, the repository contains documentation (`doc/`), helper scripts
+At the top level, the repository contains documentation (`docs/`), helper scripts
 (`scripts/`), licensing, and toolchain configuration.
 
 The source code is stored in the `src/` directory:

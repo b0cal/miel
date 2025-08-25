@@ -1,0 +1,357 @@
+@font-face {
+  font-family: 'Fira Code Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url(https://cdn.jsdelivr.net/fontsource/fonts/fira-code:vf@latest/latin-wght-normal.woff2) format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+body {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "header-grid"
+    "body-grid";
+  background-color: #d0d0d0;
+  overflow: hidden;
+  height: 100vh;
+  max-width: 100vw;
+  box-sizing: border-box;
+  padding: 10px 10px 10px 10px;
+}
+
+.light-tile {
+  border: none;
+  border: 5px solid #121212;
+  border-radius: 15px;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.2), 4px 4px 0 rgba(0,0,0,0.2), 6px 6px 0 rgba(0,0,0,0.2);
+  padding: 10px;
+  background: #d0d0d0;
+}
+
+.dark-tile-custom {
+  border: 3px solid #eea537;
+  border-radius: 15px;
+  padding: 10px;
+  background: #121212;
+}
+.dark-tile {
+  border: 1px solid #121212;
+  border-radius: 15px;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.2), 4px 4px 0 rgba(0,0,0,0.2), 6px 6px 0 rgba(0,0,0,0.2);
+  padding: 10px;
+  background: #121212;
+}
+
+.dark-tile-wout-shadow {
+  border: 1px solid #121212;
+  border-radius: 15px;
+  padding: 10px;
+  background: #121212;
+}
+
+.dark-tile:hover, .light-tile:hover {
+ /* Make the tile pop out a little for interactivity */
+}
+
+.header-grid {
+  grid-area: header-grid;
+  display: grid;
+  grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.5fr) minmax(0, 0.4fr);
+  grid-template-rows: 1fr;
+  gap: 10px;
+  padding-bottom: 10px;
+  overflow: visible;
+}
+
+.text-1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+
+  font-family: 'Fira Code Variable';
+
+  font-size: clamp(4px, 2.5cqw, 40px);
+  font-weight: bold;
+
+}
+
+.text-1 p {
+  margin: 0;
+  font-family: inherit;
+  white-space: normal;
+}
+
+
+.miel-logo {
+  container-type: inline-size;
+}
+
+.miel-logo .multi-line {
+  display: flex;
+  font-size: clamp(3px, 4cqw, 5.5px);
+}
+
+@media(max-width: 1023px){
+  .miel-logo{
+    justify-content: center;
+    align-items: center;
+  }
+}
+
+.miel-logo .single-line {
+  display: none;
+}
+
+
+@media(min-width: 1024px) {
+
+  .miel-logo {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .miel-logo .multi-line {
+    display: none;
+  }
+
+  .miel-logo .single-line {
+    display: flex;
+    font-size: clamp(5.5px, 2cqw, 16px);
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+  }
+}
+
+.github-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.github-logo img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.body-grid {
+  grid-area: body-grid;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: 3fr 1fr;
+  grid-template-areas:
+    "terminal project-desc-1 project-desc-1"
+    "terminal technologies code-container";
+  gap: 10px;
+  padding: 0px 0px 10px 0px;
+  height: 100%;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.version { 
+  grid-area: version; 
+  display: flex;
+  align-items: center;
+  justify-content: left;
+  overflow: visible;
+  container-type: inline-size;
+  padding: 5px;
+}
+
+.version pre, .services pre {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  margin: 0;
+  font-size: clamp(8px, 3cqw, 24px);
+  line-height: 1.2;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 768px) {
+  .version pre, .services pre {
+    font-size: clamp(6px, 4cqw, 16px);
+  }
+}
+
+@media (min-width: 1400px) {
+  .version pre, .services pre {
+    font-size: clamp(12px, 2.5cqw, 32px);
+  }
+}
+
+.services { 
+  grid-area: services; 
+  display: flex; 
+  align-items: center;
+  justify-content: left;
+  overflow: hidden;
+  container-type: inline-size;
+  padding: 5px;
+}
+
+
+.technologies { 
+  grid-area: technologies;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  min-height: 0;
+  overflow: visible;
+  box-sizing: border-box;
+  padding: 3px;
+}
+
+.rust a, .tokio a, .nspawn a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.rust, .tokio, .nspawn { 
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.rust img, .tokio img, .nspawn img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.code-container {
+  grid-area: code-container;
+  display: grid;
+  grid-template-columns: auto;
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas:
+    "version"
+    "services";
+  gap: 10px;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+
+.terminal {
+  grid-area: terminal;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-desc-1 {
+  grid-area: project-desc-1;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  grid-template-rows: auto 0.7fr auto;
+  grid-template-areas:
+  ". title ."
+  ". first-desc ."
+  ". authors .";
+}
+
+.title { 
+  grid-area: title; 
+  display: flex;
+  align-items: center;
+  justify-content: left;
+  text-align: left;
+  font-family: 'Fira Code Variable';
+  font-size: clamp(4px, 2.5cqw, 40px);
+  font-weight: bold;
+}
+
+.drin { grid-area: drin; }
+.esteban { grid-area: esteban; }
+.aubry { grid-area: aubry; }
+.nils { grid-area: nils; }
+
+.authors-title { 
+  grid-area: authors-title; 
+  display: flex;
+  align-items: center;
+  justify-content: left;
+  text-align: left;
+
+  font-family: 'Fira Code Variable';
+  font-size: clamp(4px, 1.5cqw, 20px);
+  font-weight: bold;
+}
+
+.authors {
+  grid-area: authors;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  grid-template-columns: auto auto;
+  grid-template-areas:
+    "authors-title authors-title"
+    "drin esteban"
+    "aubry nils";
+  font-family: 'Fira Code Variable';
+  gap: 15px;
+  padding: 20px;
+  justify-items: left;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.name {
+  display: flex;
+  justify-content: left;
+  align-items: center;
+  padding: 5px 10px;
+  font-size: clamp(4px, 1.5cqw, 16px);
+}
+
+.name .first-two {
+  color: #eea537;
+  font-size: 1em;
+}
+
+.first-desc {
+  grid-area: first-desc;
+  display: flex;
+  align-items: left;
+  justify-content: left;
+  text-align: left;
+  font-family: 'Fira Code Variable';
+}
+
+.first-desc li::first-letter {
+  color: #eea537;
+  font-size: 1.5em;
+}
+
+.first-desc li {
+  margin: 0;
+  white-space: normal;  
+  line-height: 2.5;
+  font-size: clamp(4px, 1.1cqw, 20px);
+}
