@@ -12,18 +12,29 @@ jobs:
   github-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v3
         with:
-          name: build-output
-          path: build
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/webui/package-lock.json
+      - name: Restore cargo cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build production binary
+        run: cargo make prod
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: build/miel
+          files: src/core/target/release/miel
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
