@@ -126,12 +126,12 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Extract version from Cargo.toml
         id: cargo_version
         run: |
-          version=$(grep '^version' Cargo.toml | head -n1 | awk -F\" '{print $2}')
+          version=$(grep '^version' src/core/Cargo.toml | head -n1 | awk -F\" '{print $2}')
           echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
@@ -142,21 +142,3 @@ jobs:
           git config user.email "github-actions@github.com"
           git tag "v${{ steps.cargo_version.outputs.version }}"
           git push https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git "v${{ steps.cargo_version.outputs.version }}"
-
-      - name: Get latest merged PR info
-        id: pr_info
-        run: |
-          PR_JSON=$(gh pr list --state merged --base main --limit 1 --json title,body)
-          TITLE=$(echo "$PR_JSON" | jq -r '.[0].title')
-          BODY=$(echo "$PR_JSON" | jq -r '.[0].body')
-          echo "title=$TITLE" >> $GITHUB_OUTPUT
-          echo "body=$BODY" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: src/core/target/release/miel
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
