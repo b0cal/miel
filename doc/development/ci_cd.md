@@ -25,19 +25,14 @@ builds across the local development and CI environments.
 
 ## Workflow
 
-The CI/CD pipeline is implemented in two workflow file:
+The CI/CD pipeline is implemented in a single workflow file:
 
 - **`.github/workflows/ci.yml`** (CI workflow): lint, format, static analysis,
   tests, builds, and releases. Triggered on pull requests and pushes to `main`
   and `dev` branches, with special handling for version tags. This workflow does
-  **NOT** run on changes to documentation files only (`/doc` directory). If the
-  workflow runs on the `main` branch, it will also create a tag based on the
-  semantic versioning in `Cargo.toml`.
-- **`.github/workflows/release.yml`** (CD workflow): triggered on semver tag
-  pushes. Downloads the built binary artifact from the CI workflow and publishes
-  it to GitHub Releases.
+  **NOT** run on changes to documentation files only (`/doc` directory).
 
-### CI workflow
+### Workflow Structure
 
 1. **Code quality and audit**
    - Run linting and formatting checks for Rust, JavaScript and Markdown.
@@ -52,13 +47,15 @@ The CI/CD pipeline is implemented in two workflow file:
    - Embed webUI assets into the Rust core binary.
    - Produce a single self-contained binary for validation.
    - Upload built binaries as a GitHub Actions artifact.
-4. **Tag** (conditional)
-   - Only runs on pushes to the `main` branch:
-   - Create a new git tag based on the semantic versioning in `Cargo.toml`.
+4. **Release** (conditional)
+   - Only runs on tagged pushes to the `main` branch:
+     - Downloads the built binary artifact
+     - Publishes the binary to GitHub Releases under the corresponding version
+       tag
 
-### CD workflow
+### Release Process
 
-The release process is triggered by on pushed to main and following the semantic
+The release process is triggered by **Git tags** following the semantic
 versioning convention:
 
 ```
@@ -66,17 +63,10 @@ v<major>.<minor>.<patch>
 e.g., v1.0.0, v1.1.3
 ```
 
-Tags are automatically extracted from the `Cargo.toml` file during the build.
+Tags are used to:
 
-The release workflow performs the following steps:
-
-1. **Build**
-
-- Build the application with a production profile.
-
-2. **Release**
-
-- Create a new GitHub Release with the tag name and description.
+- Automatically trigger the release process
+- Version published binaries on GitHub Releases
 
 ## Local Testing
 
