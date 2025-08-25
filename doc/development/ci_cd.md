@@ -55,7 +55,7 @@ The CI/CD pipeline is implemented in a single workflow file:
 
 ### Release Process
 
-The release process is triggered on pushes to main and follows the semantic
+The release process is triggered by **Git tags** following the semantic
 versioning convention:
 
 ```
@@ -63,8 +63,10 @@ v<major>.<minor>.<patch>
 e.g., v1.0.0, v1.1.3
 ```
 
-Tags are automatically extracted from the `Cargo.toml` file during the build to
-create the release.
+Tags are used to:
+
+- Automatically trigger the release process
+- Version published binaries on GitHub Releases
 
 ## Local Testing
 
