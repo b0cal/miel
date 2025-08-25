@@ -3,11 +3,11 @@ name: CI
 on:
   pull_request:
     paths-ignore:
-      - "doc/**"
+      - "docs/**"
   push:
     branches: [main, dev]
     paths-ignore:
-      - "doc/**"
+      - "docs/**"
 
 permissions:
   contents: write
