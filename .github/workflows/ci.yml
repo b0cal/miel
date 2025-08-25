@@ -81,6 +81,9 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install NodeJS dependencies
+        run: npm ci --prefix src/webui
+
       - name: Run Rust tests
         run: cargo make core-test
 
