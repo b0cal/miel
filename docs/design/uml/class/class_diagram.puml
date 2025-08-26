@@ -9,638 +9,405 @@ skinparam backgroundColor #FEFEFE
 skinparam classBackgroundColor #FFFFFF
 skinparam classBorderColor #333333
 
-package "Core" {
-  class Controller {
-    + new() -> Controller
-    + run()
-    + shutdown()
-    - init()
-    + create_session(service_name: String, connection: Connection) -> Result<SessionId, Error>
-    - runtime_state: RuntimeState
+package "Configuration" {
+  struct Config {
+    + services: Vec<ServiceConfig>
+    + bind_address: String
+    + storage_path: PathBuf
+    + web_ui_enabled: bool
+    + web_ui_port: u16
+    + max_sessions: usize
+    + session_timeout_secs: u64
+    + ip_filter: IpFilter
+    + port_filter: PortFilter
+    --
+    + from_file(path: &Path) -> Result<Self, ConfigError>
+    + from_args() -> Result<Self, ConfigError>
+    + validate(&self) -> Result<(), ConfigError>
+  }
+
+  struct ServiceConfig {
+    + name: String
+    + port: u16
+    + protocol: Protocol
+    + container_image: String
+    + enabled: bool
+    + header_patterns: Vec<String>
+    + banner_response: Option<String>
+  }
+
+  struct IpFilter {
+    + allowed_ranges: Vec<IpRange>
+    + blocked_ranges: Vec<IpRange>
+    + whitelist_mode: bool
+  }
+
+  struct PortFilter {
+    + allowed_ports: Vec<PortRange>
+    + blocked_ports: Vec<PortRange>
+  }
+
+  struct IpRange {
+    + start: IpAddr
+    + end: IpAddr
+  }
+
+  struct PortRange {
+    + start: u16
+    + end: u16
+  }
+
+  enum Protocol {
+    TCP,
+    UDP
   }
 }
 
-package "Network Layer" {
-  class ListenerManager {
-    + new(services: Vec<ServiceConfiguration>) -> ListenerManager
-    + bind_ports() -> Result<(), Error>
-    + stop_listening()
-    - handle_new_connection(socket: Socket) -> Result<(), Error>
-    - identify_service(socket: &Socket) -> Result<String, Error>
-    - parse_protocol_header(data: &[u8], protocol: Protocol) -> Result<String, Error>
-    - filter_connection(ip: Ipv4Addr) -> bool
-    - check_session_limits(ip: Ipv4Addr, service: &str) -> bool
-    - sockets: Vec<Socket>
-    - configured_services: Vec<ServiceConfiguration>
-    - service_identifiers: HashMap<String, ServiceIdentifier>
-    - incoming_connections: Queue<Connection>
+package "Core" {
+  struct Controller {
+    - config: Config
+    - listener: NetworkListener
+    - session_manager: SessionManager
+    - container_manager: ContainerManager
+    - storage: Box<dyn Storage>
+    - web_server: Option<WebServer>
+    --
+    + new(config: Config) -> Result<Self, ControllerError>
+    + run() -> Result<(), ControllerError>
+    + shutdown() -> Result<(), ControllerError>
+  }
+}
+
+package "Network" {
+  struct NetworkListener {
+    - listeners: HashMap<u16, TcpListener>
+    - session_tx: mpsc::Sender<SessionRequest>
+    - service_detector: ServiceDetector
+    - connection_filter: ConnectionFilter
+    --
+    + new() -> Self
+    + bind_services(services: &[ServiceConfig]) -> Result<(), NetworkError>
+    + start_listening(session_tx: mpsc::Sender<SessionRequest>) -> Result<(), NetworkError>
+    + shutdown() -> Result<(), NetworkError>
+    - handle_connection(stream: TcpStream, service: &str)
   }
 
-  struct ServiceIdentifier {
+  struct ServiceDetector {
+    - service_patterns: HashMap<String, Vec<ServicePattern>>
+    --
+    + new(services: &[ServiceConfig]) -> Self
+    + identify_service(stream: &TcpStream) -> Result<String, NetworkError>
+    + detect_from_payload(data: &[u8]) -> Option<String>
+    + detect_from_port(port: u16) -> Option<String>
+  }
+
+  struct ConnectionFilter {
+    - ip_filter: IpFilter
+    - port_filter: PortFilter
+    - protocol_filter: ProtocolFilter
+    --
+    + new(ip_filter: IpFilter, port_filter: PortFilter) -> Self
+    + should_accept_connection(addr: SocketAddr, service: &str) -> bool
+    + is_ip_allowed(ip: IpAddr) -> bool
+    + is_port_allowed(port: u16) -> bool
+  }
+
+  struct ProtocolFilter {
+    + allowed_protocols: Vec<Protocol>
+    + blocked_protocols: Vec<Protocol>
+  }
+
+  struct ServicePattern {
     + service_name: String
-    + protocol: Protocol
     + port: u16
+    + protocol: Protocol
     + header_patterns: Vec<String>
-    + identify_payload(data: &[u8]) -> bool
+    + banner_patterns: Vec<String>
   }
 
-  struct Connection {
-    + socket: Socket
-    + src_ip: Ipv4Addr
-    + src_port: u16
-    + dst_port: u16
-    + identified_service: String
-    + protocol: Protocol
-    + initial_payload: Vec<u8>
+  struct SessionRequest {
+    + stream: TcpStream
+    + service_name: String
+    + client_addr: SocketAddr
+    + timestamp: DateTime<Utc>
   }
 }
 
 package "Session Management" {
-  class SessionManager {
-    + new() -> SessionManager
-    + handle_session(connection: Connection) -> Result<(), Error>
+  struct SessionManager {
+    - active_sessions: HashMap<Uuid, ActiveSession>
+    - container_manager: Arc<ContainerManager>
+    - storage: Arc<dyn Storage>
+    - max_sessions: usize
+    - session_timeout: Duration
+    --
+    + new(container_manager: Arc<ContainerManager>, storage: Arc<dyn Storage>, max_sessions: usize) -> Self
+    + handle_session(request: SessionRequest) -> Result<(), SessionError>
     + cleanup_expired_sessions()
-    + get_session_count_for_ip(ip: Ipv4Addr) -> u32
-    + get_session_count_for_service(service: &str) -> u32
-    - hook_session(session_id: SessionIdentifier) -> Result<(), Error>
-    - get_session(id: SessionId) -> Option<&Session>
-    - new_session(metadata: SessionMetadata) -> Session
-    - save_session(session: &Session) -> Result<(), Error>
-    - close_session(id: SessionId) -> Result<(), Error>
-    - sessions: HashMap<SessionId, SessionHandle>
-    - sessions_by_ip: HashMap<Ipv4Addr, HashSet<SessionId>>
-    - sessions_by_service: HashMap<String, HashSet<SessionId>>
-  }
-
-  struct SessionMetadata {
-    + ip: Ipv4Addr
-    + src_port: u16
-    + dst_port: u16
-    + service_name: String
-    + protocol: Protocol
-    + timestamp: DateTime<Utc>
-  }
-
-  struct SessionHandle {
-    + session: Session
-    + container: Option<Container>
-    + unix_socket: Socket
-    + created_at: DateTime<Utc>
-    + last_activity: DateTime<Utc>
-    + session_initialized: bool
-    + ttl_seconds: u64
+    + get_active_session_count() -> usize
+    + shutdown_all_sessions() -> Result<(), SessionError>
+    - create_session(request: SessionRequest) -> Result<Session, SessionError>
+    - setup_data_proxy(session_id: Uuid, client_stream: TcpStream, container_stream: TcpStream) -> Result<(), SessionError>
   }
 
   struct Session {
     + id: Uuid
-    + metadata: SessionMetadata
-    + recording: Option<SessionRecording>
+    + service_name: String
+    + client_addr: SocketAddr
+    + start_time: DateTime<Utc>
+    + end_time: Option<DateTime<Utc>>
+    + container_id: Option<String>
+    + bytes_transferred: u64
     + status: SessionStatus
   }
 
+  struct ActiveSession {
+    + session: Session
+    + container_handle: Option<ContainerHandle>
+    + stream_recorder: StreamRecorder
+    + _cleanup_handle: tokio::task::JoinHandle<()>
+  }
+
   enum SessionStatus {
-    + Pending
-    + Active
-    + Expired
-    + Closed
+    Pending,
+    Active,
+    Completed,
+    Error
+  }
+}
+
+package "Data Capture" {
+  struct StreamRecorder {
+    - session_id: Uuid
+    - tcp_capture: TcpCapture
+    - stdio_capture: Option<StdioCapture>
+    - storage: Arc<dyn Storage>
+    --
+    + new(session_id: Uuid, storage: Arc<dyn Storage>) -> Self
+    + start_tcp_proxy(client_stream: TcpStream, container_stream: TcpStream) -> Result<(), CaptureError>
+    + start_stdio_capture(pty_master: File) -> Result<(), CaptureError>
+    + finalize_capture() -> Result<CaptureArtifacts, CaptureError>
+  }
+
+  struct TcpCapture {
+    - session_id: Uuid
+    - client_to_container: Vec<u8>
+    - container_to_client: Vec<u8>
+    - timestamps: Vec<(DateTime<Utc>, Direction, usize)>
+    --
+    + new(session_id: Uuid) -> Self
+    + proxy_and_record(client_stream: TcpStream, container_stream: TcpStream) -> Result<(), CaptureError>
+    + get_artifacts() -> (Vec<u8>, Vec<u8>, Vec<(DateTime<Utc>, Direction, usize)>)
+  }
+
+  struct StdioCapture {
+    - session_id: Uuid
+    - stdin_data: Vec<u8>
+    - stdout_data: Vec<u8>
+    - stderr_data: Vec<u8>
+    - timestamps: Vec<(DateTime<Utc>, StdioStream, usize)>
+    --
+    + new(session_id: Uuid) -> Self
+    + capture_pty(pty_master: File) -> Result<(), CaptureError>
+    + get_artifacts() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<(DateTime<Utc>, StdioStream, usize)>)
+  }
+
+  struct CaptureArtifacts {
+    + session_id: Uuid
+    + tcp_client_to_container: Vec<u8>
+    + tcp_container_to_client: Vec<u8>
+    + stdio_stdin: Vec<u8>
+    + stdio_stdout: Vec<u8>
+    + stdio_stderr: Vec<u8>
+    + tcp_timestamps: Vec<(DateTime<Utc>, Direction, usize)>
+    + stdio_timestamps: Vec<(DateTime<Utc>, StdioStream, usize)>
+    + total_bytes: u64
+    + duration: Duration
+  }
+
+  enum Direction {
+    ClientToContainer,
+    ContainerToClient
+  }
+
+  enum StdioStream {
+    Stdin,
+    Stdout,
+    Stderr
+  }
+
+  enum CaptureError {
+    TcpStreamError(std::io::Error),
+    StdioError(std::io::Error),
+    StorageError(StorageError)
   }
 }
 
 package "Container Management" {
-  class ContainerManager {
-    + new(config: ContainerConfig) -> ContainerManager
-    + get_container(service: &str) -> Result<Container, Error>
-    + cleanup_container(id: Uuid) -> Result<(), Error>
-    + health_check() -> Result<(), Error>
-    + prewarm_containers(service: &str, count: u32) -> Result<(), Error>
-    - create_container(template: &str) -> Result<Container, Error>
-    - delete_container(id: Uuid) -> Result<(), Error>
-    - obfuscate_container(container: &mut Container) -> Result<(), Error>
-    - harden_container(container: &mut Container) -> Result<(), Error>
-    - container_pools: HashMap<String, Vec<Container>>
-    - pool_sizes: HashMap<String, u32>
-    - max_containers_per_service: u32
-    - nspawn_wrapper: NspawnWrapper
+  struct ContainerManager {
+    - runtime: Runtime
+    - active_containers: HashMap<String, ContainerHandle>
+    --
+    + new() -> Result<Self, ContainerError>
+    + create_container(service_config: &ServiceConfig) -> Result<ContainerHandle, ContainerError>
+    + cleanup_container(handle: ContainerHandle) -> Result<(), ContainerError>
+    + cleanup_all_containers() -> Result<(), ContainerError>
+    + get_container_stats() -> ContainerStats
   }
 
-  struct Container {
-    + id: Uuid
-    + template: String
-    + status: ContainerStatus
-    + created_at: DateTime<Utc>
-    + last_used: Option<DateTime<Utc>>
-    + get_socket() -> Result<Socket, Error>
-    + attach_session(session_id: Uuid) -> Result<(), Error>
-    + reset_for_reuse() -> Result<(), Error>
-    + nspawn_machine: NspawnMachine
-  }
-
-  enum ContainerStatus {
-    + Creating
-    + Ready
-    + InUse
-    + Stopping
-    + Stopped
-  }
-
-  ' systemd-nspawn wrapper classes
-  class NspawnWrapper {
-    + new() -> NspawnWrapper
-    + create_machine(config: &MachineConfig) -> Result<NspawnMachine, Error>
-    + start_machine(machine: &NspawnMachine) -> Result<(), Error>
-    + stop_machine(machine: &NspawnMachine) -> Result<(), Error>
-    + terminate_machine(machine: &NspawnMachine) -> Result<(), Error>
-    + list_machines() -> Result<Vec<String>, Error>
-    + get_machine_status(name: &str) -> Result<MachineStatus, Error>
-    + attach_console(machine: &NspawnMachine) -> Result<(UnixStream, UnixStream), Error>
-    + create_pty_pair(machine: &NspawnMachine) -> Result<(File, File), Error>
-    - execute_systemd_nspawn(args: &[&str]) -> Result<Child, Error>
-    - execute_machinectl(args: &[&str]) -> Result<Output, Error>
-    - parse_machine_list(output: &str) -> Vec<String>
-  }
-
-  struct NspawnMachine {
-    + name: String
-    + image_path: PathBuf
-    + machine_id: Uuid
-    + status: MachineStatus
-    + pid: Option<u32>
-    + created_at: DateTime<Utc>
-    + root_directory: PathBuf
-    + bind_mounts: Vec<BindMount>
-    + capabilities: Vec<String>
-    + environment: HashMap<String, String>
-    + network_config: NetworkConfig
-    + security_config: SecurityConfig
-  }
-
-  struct MachineConfig {
-    + name: String
-    + image_path: PathBuf
-    + root_directory: Option<PathBuf>
-    + bind_mounts: Vec<BindMount>
-    + capabilities_drop: Vec<String>
-    + capabilities_keep: Vec<String>
-    + environment: HashMap<String, String>
-    + network_config: NetworkConfig
-    + security_config: SecurityConfig
-    + ephemeral: bool
-    + readonly: bool
-    + boot: bool
-    + console: ConsoleType
-  }
-
-  struct BindMount {
-    + source: PathBuf
-    + target: PathBuf
-    + readonly: bool
-    + create_destination: bool
-  }
-
-  struct NetworkConfig {
-    + network_type: NetworkType
-    + interface_name: Option<String>
-    + bridge_name: Option<String>
-    + veth_extra: Option<String>
-    + port_forwards: Vec<PortForward>
-  }
-
-  struct PortForward {
-    + host_port: u16
-    + container_port: u16
-    + protocol: Protocol
-  }
-
-  struct SecurityConfig {
-    + seccomp_profile: Option<PathBuf>
-    + apparmor_profile: Option<String>
-    + selinux_context: Option<String>
-    + no_new_privileges: bool
-    + user_namespace: bool
-    + private_network: bool
-    + private_users: bool
-    + kill_signal: Signal
-  }
-
-  enum MachineStatus {
-    + Creating
-    + Running
-    + Stopping
-    + Stopped
-    + Failed
-    + Unknown
-  }
-
-  enum NetworkType {
-    + Host
-    + Private
-    + Bridge(String)
-    + Interface(String)
-    + Zone(String)
-  }
-
-  enum ConsoleType {
-    + Interactive
-    + Passive
-    + Pipe
-    + None
-  }
-
-  enum Signal {
-    + SIGTERM
-    + SIGKILL
-    + SIGINT
-    + SIGUSR1
-    + SIGUSR2
-  }
-
-  ' Command execution and process management
-  class ProcessManager {
-    + new() -> ProcessManager
-    + spawn_command(command: &str, args: &[&str]) -> Result<Child, Error>
-    + execute_command(command: &str, args: &[&str]) -> Result<Output, Error>
-    + execute_command_with_timeout(command: &str, args: &[&str], timeout: Duration) -> Result<Output, Error>
-    + kill_process(pid: u32, signal: Signal) -> Result<(), Error>
-    + wait_for_process(child: &mut Child) -> Result<ExitStatus, Error>
-    + check_command_exists(command: &str) -> bool
-    - validate_systemd_nspawn() -> Result<(), Error>
-    - validate_machinectl() -> Result<(), Error>
-  }
-
-  ' Image and template management
-  class ImageManager {
-    + new(images_path: PathBuf) -> ImageManager
-    + list_available_images() -> Result<Vec<ImageInfo>, Error>
-    + prepare_image(template_name: &str) -> Result<PathBuf, Error>
-    + create_ephemeral_copy(image_path: &PathBuf) -> Result<PathBuf, Error>
-    + cleanup_ephemeral_image(image_path: &PathBuf) -> Result<(), Error>
-    + validate_image(image_path: &PathBuf) -> Result<(), Error>
-    + get_image_info(image_path: &PathBuf) -> Result<ImageInfo, Error>
-    - images_directory: PathBuf
-    - ephemeral_directory: PathBuf
-  }
-
-  struct ImageInfo {
-    + name: String
-    + path: PathBuf
-    + size_bytes: u64
-    + created_at: DateTime<Utc>
-    + image_type: ImageType
-    + description: Option<String>
-    + service_type: String
-  }
-
-  enum ImageType {
-    + Directory
-    + RawImage
-    + SquashFS
-    + Subvolume
-  }
-}
-
-package "Recording & Storage" {
-  class SessionRecorder {
-    + new(session_metadata: SessionMetadata) -> SessionRecorder
-    + start_recording(socket: Socket) -> Result<(), Error>
-    + stop_recording() -> Result<SessionRecording, Error>
-    - capture_session(socket: Socket)
-    - save_session() -> Result<(), Error>
-    - out_stream_ref: StreamRef
-    - in_stream_ref: StreamRef
-    - packet_capture: Option<Pcap>
-    - capture_config: CaptureConfig
-  }
-
-  struct SessionRecording {
-    + session_id: Uuid
-    + in_stream: Vec<u8>
-    + out_stream: Vec<u8>
-    + pcap: Option<Vec<u8>>
-    + metadata: SessionMetadata
-    + duration_ms: u64
-    + bytes_transferred: u64
-  }
-
-  ' Document-based data access pattern for NoSQL
-  interface DocumentRepository {
-    + find_by_id(id: Uuid) -> Result<Option<SessionDocument>, Error>
-    + find_all() -> Result<Vec<SessionDocument>, Error>
-    + find_by_filter(filter: DocumentFilter) -> Result<Vec<SessionDocument>, Error>
-    + insert(document: SessionDocument) -> Result<(), Error>
-    + update(id: Uuid, document: SessionDocument) -> Result<(), Error>
-    + delete(id: Uuid) -> Result<(), Error>
-    + create_index(field: &str) -> Result<(), Error>
-    + aggregate(pipeline: Vec<AggregationStage>) -> Result<Vec<DocumentAggregateResult>, Error>
-    + count_by_filter(filter: DocumentFilter) -> Result<u64, Error>
-  }
-
-  struct SessionDocument {
-    + _id: Uuid
-    + session_metadata: SessionMetadata
-    + recording_data: Option<RecordingData>
-    + session_status: SessionStatus
-    + created_at: DateTime<Utc>
-    + updated_at: DateTime<Utc>
-    + closed_at: Option<DateTime<Utc>>
-  }
-
-  struct RecordingData {
-    + in_stream_base64: String
-    + out_stream_base64: String
-    + pcap_base64: Option<String>
-    + duration_ms: u64
-    + bytes_transferred: u64
-  }
-
-  struct DocumentFilter {
-    + ip: Option<Ipv4Addr>
-    + service_name: Option<String>
-    + date_range: Option<DateRange>
-    + status: Option<SessionStatus>
-    + min_duration_ms: Option<u64>
-    + max_duration_ms: Option<u64>
-  }
-
-  struct DateRange {
-    + start: DateTime<Utc>
-    + end: DateTime<Utc>
-  }
-
-  enum AggregationStage {
-    + Match(DocumentFilter)
-    + Group(GroupBy)
-    + Sort(SortBy)
-    + Limit(u32)
-    + Project(Vec<String>)
-  }
-
-  struct GroupBy {
-    + field: String
-    + count: bool
-    + sum_field: Option<String>
-    + avg_field: Option<String>
-  }
-
-  struct SortBy {
-    + field: String
-    + ascending: bool
-  }
-
-  struct DocumentAggregateResult {
-    + _id: serde_json::Value
-    + count: Option<u64>
-    + sum: Option<f64>
-    + avg: Option<f64>
-    + data: HashMap<String, serde_json::Value>
-  }
-
-  class NoSqlDocumentRepository {
-    - connection: NoSqlConnection
-    - database_name: String
-    - collection_name: String
-    + new(connection: NoSqlConnection, db: &str, collection: &str) -> NoSqlDocumentRepository
-    - build_mongo_filter(filter: &DocumentFilter) -> mongodb::bson::Document
-    - build_mongo_pipeline(stages: &[AggregationStage]) -> Vec<mongodb::bson::Document>
-  }
-
-  class FileDocumentRepository {
-    - storage_path: PathBuf
-    - index_cache: HashMap<String, Vec<Uuid>>
-    - file_locks: HashMap<Uuid, Mutex<()>>
-    + new(storage_path: PathBuf) -> FileDocumentRepository
-    - rebuild_index() -> Result<(), Error>
-    - get_document_path(id: Uuid) -> PathBuf
-  }
-}
-
-package "Configuration" {
-  class ConfigurationParser {
-    + parse(path: &str) -> Result<Configuration, Error>
-    + validate_configuration(config: &Configuration) -> Result<(), Error>
-    - get_file_configuration(path: &str) -> Result<String, Error>
-    - parse_file_configuration(content: &str) -> Result<Configuration, Error>
-    - parse_parameters() -> Result<RuntimeConfiguration, Error>
-    - merge_configurations(file: Configuration, runtime: RuntimeConfiguration) -> Configuration
-  }
-
-  struct DefaultConfiguration {
-    + get_default() -> Configuration
-  }
-
-  struct Configuration {
-    + version: String
-    + bind_address: Ipv4Addr
-    + default_ttl: u32
-    + max_sessions_global: u32
-    + max_sessions_per_ip: u32
-    + max_sessions_per_service: u32
-    + allowed_ips: Vec<Ipv4Addr>
-    + denied_ips: Vec<Ipv4Addr>
-    + webui_enabled: bool
-    + webui_bind_address: Ipv4Addr
-    + log_level: String
-    + log_dir: PathBuf
-    + storage_type: StorageType
-    + database_config: Option<DatabaseConfig>
-    + container_config: ContainerGlobalConfig
-    + services: Vec<ServiceConfiguration>
-  }
-
-  struct ContainerGlobalConfig {
-    + images_path: PathBuf
-    + ephemeral_path: PathBuf
-    + default_capabilities_drop: Vec<String>
-    + default_security_config: SecurityConfig
-    + cleanup_timeout_seconds: u64
-    + max_machine_name_length: u32
-  }
-
-  struct DatabaseConfig {
-    + connection_string: String
-    + database_name: String
-    + collection_name: String
-    + connection_pool_size: u32
-    + timeout_seconds: u64
-  }
-
-  struct ServiceConfiguration {
-    + name: String
+  struct ContainerHandle {
+    + id: String
+    + service_name: String
     + port: u16
-    + protocol: Protocol
-    + ttl: u64
-    + enabled: bool
-    + container_template: String
-    + capture_config: CaptureConfig
-    + max_bytes: u64
-    + timeout_seconds: u64
-    + prewarmed_containers: u32
-    + header_patterns: Vec<String>
-    + machine_config_override: Option<MachineConfig>
+    + created_at: DateTime<Utc>
+    + process_handle: Option<tokio::process::Child>
+    + pty_master: Option<File>
+    + tcp_socket: Option<TcpStream>
   }
 
-  struct RuntimeConfiguration {
-    + configuration_path: PathBuf
-    + log_level: String
+  struct ContainerStats {
+    + active_count: usize
+    + total_created: u64
+    + failed_count: u64
   }
 
-  struct RuntimeState {
-    + startup_time: DateTime<Utc>
-    + active_sessions: u32
-    + total_sessions: u64
-    + uptime_seconds: u64
-    + sessions_by_service: HashMap<String, u32>
-  }
-
-  enum Protocol {
-    + TCP
-    + UDP
-  }
-
-  enum StorageType {
-    + NoSql
-    + File
-  }
-
-  struct CaptureConfig {
-    + pty: bool
-    + pcap: bool
-    + metadata: bool
+  enum Runtime {
+    SystemdNspawn,
   }
 }
 
-package "API & WebUI" {
-  class ApiManager {
-    + new(repository: Box<dyn DocumentRepository>) -> ApiManager
-    + serve(bind_addr: Ipv4Addr, port: u16) -> Result<(), Error>
-    + get_status() -> StatusResponse
-    + get_sessions(filter: Option<DocumentFilter>) -> Vec<SessionSummary>
-    + get_sessions_by_service(service: &str) -> Vec<SessionSummary>
-    + download_capture(id: Uuid) -> Result<Vec<u8>, Error>
-    + get_session_stats() -> SessionStats
-    - document_repository: Box<dyn DocumentRepository>
-    - session_document_to_summary(doc: &SessionDocument) -> SessionSummary
+package "Storage" {
+  interface Storage {
+    + save_session(session: &Session) -> Result<(), StorageError>
+    + get_sessions(filter: Option<SessionFilter>) -> Result<Vec<Session>, StorageError>
+    + save_interaction(session_id: Uuid, data: &[u8]) -> Result<(), StorageError>
+    + get_session_data(session_id: Uuid) -> Result<Vec<u8>, StorageError>
+    + cleanup_old_sessions(older_than: DateTime<Utc>) -> Result<usize, StorageError>
+    + save_capture_artifacts(artifacts: &CaptureArtifacts) -> Result<(), StorageError>
+    + get_capture_artifacts(session_id: Uuid) -> Result<CaptureArtifacts, StorageError>
   }
 
-  class WebuiManager {
-    + new() -> WebuiManager
-    + serve_static() -> HttpResponse
-    + serve_dashboard() -> HttpResponse
-    - webui_bundle: &'static [u8]
+  struct FileStorage {
+    - base_path: PathBuf
+    - session_index: HashMap<Uuid, PathBuf>
+    - artifacts_path: PathBuf
   }
 
-  struct StatusResponse {
-    + uptime_seconds: u64
-    + active_sessions: u32
-    + total_sessions: u64
-    + enabled_services: Vec<String>
-    + sessions_by_service: HashMap<String, u32>
-    + sessions_by_ip_count: HashMap<Ipv4Addr, u32>
-    + storage_status: StorageStatus
+  struct DatabaseStorage {
+    - connection_pool: sqlx::Pool<sqlx::Sqlite>
   }
 
-  struct StorageStatus {
-    + storage_type: StorageType
-    + connected: bool
-    + total_documents: u64
-    + storage_size_mb: Option<u64>
+  struct SessionFilter {
+    + service_name: Option<String>
+    + start_date: Option<DateTime<Utc>>
+    + end_date: Option<DateTime<Utc>>
+    + client_addr: Option<IpAddr>
+    + status: Option<SessionStatus>
+  }
+}
+
+package "Web Interface" {
+  struct WebServer {
+    - storage: Arc<dyn Storage>
+    - session_manager: Arc<SessionManager>
+    --
+    + new(storage: Arc<dyn Storage>, session_manager: Arc<SessionManager>) -> Self
+    + start(port: u16) -> Result<(), WebError>
+    - get_dashboard() -> impl warp::Reply
+    - get_sessions() -> impl warp::Reply
+    - get_session_data(id: Uuid) -> impl warp::Reply
+    - download_capture_artifacts(id: Uuid) -> impl warp::Reply
+  }
+}
+
+package "Error Handling" {
+  enum ControllerError {
+    Config(ConfigError),
+    Network(NetworkError),
+    Session(SessionError),
+    Container(ContainerError),
+    Storage(StorageError),
+    Web(WebError)
   }
 
-  struct SessionSummary {
-    + id: Uuid
-    + ip: Ipv4Addr
-    + service: String
-    + start_time: DateTime<Utc>
-    + duration_ms: Option<u64>
-    + bytes_transferred: u64
-    + status: SessionStatus
+  enum ConfigError {
+    InvalidFormat,
+    MissingField(String),
+    IoError(std::io::Error)
   }
 
-  struct SessionStats {
-    + total_sessions: u64
-    + sessions_by_service: HashMap<String, u64>
-    + sessions_by_hour: HashMap<u8, u64>
-    + top_ips: Vec<(Ipv4Addr, u64)>
-    + avg_session_duration: u64
+  enum NetworkError {
+    BindFailed(std::io::Error),
+    ConnectionFailed,
+    ServiceDetectionFailed
+  }
+
+  enum SessionError {
+    CreationFailed,
+    ContainerError(ContainerError),
+    StorageError(StorageError),
+    CaptureError(CaptureError)
+  }
+
+  enum ContainerError {
+    RuntimeNotAvailable,
+    CreationFailed(String),
+    StartFailed(String)
+  }
+
+  enum StorageError {
+    ConnectionFailed,
+    WriteFailed,
+    ReadFailed
+  }
+
+  enum WebError {
+    StartFailed(String),
+    RequestFailed
   }
 }
 
 ' Relationships
-Controller *-- RuntimeState
-Controller *-- ListenerManager
+Controller *-- Config
+Controller *-- NetworkListener
 Controller *-- SessionManager
-Controller *-- ConfigurationParser
-Controller *-- ApiManager
+Controller *-- ContainerManager
+Controller o-- Storage
+Controller o-- WebServer
 
-ListenerManager --> Controller : routes identified connections
-ListenerManager *-- ServiceIdentifier
-ListenerManager --> Connection
+NetworkListener *-- ServiceDetector
+NetworkListener *-- ConnectionFilter
+NetworkListener --> SessionRequest
 
-SessionManager *-- SessionHandle
-SessionManager *-- ContainerManager
-SessionManager *-- SessionRecorder
+SessionManager *-- ActiveSession
+SessionManager --> ContainerManager
+SessionManager --> Storage
+ActiveSession *-- Session
+ActiveSession *-- StreamRecorder
+ActiveSession o-- ContainerHandle
 
-SessionHandle *-- Session
-Session *-- SessionMetadata
-Session --> SessionStatus
-Session *-- SessionRecording
+StreamRecorder *-- TcpCapture
+StreamRecorder o-- StdioCapture
+StreamRecorder --> Storage
+StreamRecorder --> CaptureArtifacts
 
-ContainerManager *-- Container
-ContainerManager *-- NspawnWrapper
-ContainerManager *-- ImageManager
-Container --> ContainerStatus
-Container *-- NspawnMachine
+ContainerManager *-- Runtime
+ContainerManager --> ContainerHandle
 
-' systemd-nspawn relationships
-NspawnWrapper --> ProcessManager : executes commands
-NspawnWrapper *-- NspawnMachine
-NspawnMachine *-- MachineConfig
-NspawnMachine --> MachineStatus
-MachineConfig *-- BindMount
-MachineConfig *-- NetworkConfig
-MachineConfig *-- SecurityConfig
-NetworkConfig *-- PortForward
-NetworkConfig --> NetworkType
-MachineConfig --> ConsoleType
-SecurityConfig --> Signal
-ImageManager *-- ImageInfo
-ImageInfo --> ImageType
+FileStorage ..|> Storage
+DatabaseStorage ..|> Storage
 
-SessionRecorder *-- SessionRecording
-SessionRecorder --> DocumentRepository : stores documents
+WebServer --> Storage
+WebServer --> SessionManager
 
-ConfigurationParser *-- Configuration
-ConfigurationParser *-- DefaultConfiguration
-Configuration *-- ServiceConfiguration
-Configuration *-- DatabaseConfig
-Configuration *-- ContainerGlobalConfig
-Configuration --> Protocol
-Configuration --> StorageType
-ServiceConfiguration --> CaptureConfig
-Controller --> RuntimeConfiguration
+' Error relationships
+ControllerError --> ConfigError
+ControllerError --> NetworkError
+ControllerError --> SessionError
+ControllerError --> ContainerError
+ControllerError --> StorageError
+ControllerError --> WebError
 
-ApiManager *-- WebuiManager
-ApiManager --> DocumentRepository : queries documents
-NoSqlDocumentRepository ..|> DocumentRepository
-FileDocumentRepository ..|> DocumentRepository
-
-DocumentRepository --> SessionDocument
-SessionDocument *-- RecordingData
-SessionDocument *-- SessionMetadata
-DocumentFilter --> DateRange
-DocumentRepository --> DocumentFilter
-DocumentRepository --> AggregationStage
-AggregationStage --> GroupBy
-AggregationStage --> SortBy
-DocumentRepository --> DocumentAggregateResult
-
-' Dependencies on external types
-note right of ListenerManager : Uses tokio::net::TcpListener\nfor async networking.\nInspects packet headers to\nidentify SSH, HTTP, FTP, etc.\nbefore routing to Controller.
-note right of ContainerManager : Integrates with systemd-nspawn\nthrough custom wrapper classes.\nMaintains pre-warmed pools\nper service for performance.
-note right of NspawnWrapper : Custom systemd-nspawn wrapper\nexecutes systemd-nspawn and\nmachinectl commands directly.\nHandles machine lifecycle.
-note right of ProcessManager : Manages process execution\nwith timeouts and signal handling.\nValidates systemd dependencies.
-note right of ImageManager : Manages container images\nand ephemeral copies for\nisolation and security.
-note right of SessionRecorder : Uses pcap library for\npacket capture when enabled.\nCaptures only stdin/stdout streams\nand optional packet data.
-note left of NoSqlDocumentRepository : Primary storage for MVP.\nDocument-based pattern with\nMongoDB integration.\nStores simple session recordings\nwith stdin/stdout and pcap data.
-note right of ApiManager : WebUI only accessible on\nlocal network (127.0.0.1\nor private IP range).\nNo authentication for MVP.\nConverts SessionDocument\nto lightweight SessionSummary.
+SessionError --> CaptureError
 
 @enduml
