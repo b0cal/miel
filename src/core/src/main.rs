@@ -1,4 +1,5 @@
 use miel::*;
+use controller_handler::*;
 
 fn main() {
     let _controller = Controller::new();

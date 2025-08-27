@@ -1,0 +1,23 @@
+@startuml
+
+controller -> config: new()
+
+alt from file
+
+controller -> config: from_file()
+config -> filesystem: read_to_string()
+filesystem --> config: serialized config
+config -> tomlParser: toml::from_str()
+tomlParser --> config: Config <<create>>
+config -> config: validate()
+config --> controller: Config
+
+
+else from args
+
+controller -> config: from_args()
+
+end
+
+@enduml
+
