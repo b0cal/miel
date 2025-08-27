@@ -1,6 +1,6 @@
 use controller_handler::*;
 use error_handling::*;
-use miel::{types::ConfigError, *};
+use miel::{error_handling::types::ConfigError, *};
 
 use log::{debug, error, info, trace, warn};
 

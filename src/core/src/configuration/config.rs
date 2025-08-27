@@ -1,3 +1,4 @@
+use super::service_config::*;
 use super::types::*;
 use clap::Parser;
 use std::path::PathBuf;
@@ -11,13 +12,11 @@ use std::path::PathBuf;
 ///
 /// # Examples
 ///
-/// ```no_run
-///
+/// ```
 /// // Parse configuration from command line arguments
 /// let config = Configuration::from_args();
 /// println!("Binding to: {}", config.bind_address);
 /// println!("Storage path: {:?}", config.storage_path);
-///
 /// ```
 ///
 /// # Fields Overview
@@ -41,8 +40,8 @@ pub struct Configuration {
     ///
     /// This field contains the configuration for all the services needing to be exposed through
     /// containers
-    /// It is not exposed as a command-line argument for the moment as it requires to specify how
-    /// to parse the Vec<ServiceConfig> object
+    /// It is not exposed as a command-line argument as it is populated with the help of the
+    /// `from_file()` function using the `services_path` field
     ///
     /// # Note
     /// Couldn't it be a string containing every service name we want to activate, but
@@ -52,6 +51,16 @@ pub struct Configuration {
     /// Currently uses `#[arg(skip)]` to exclude from command-line parsing
     #[arg(skip)]
     pub services: Vec<ServiceConfig>,
+
+    /// Path to the directory containing the configuration files for the services needing to be
+    /// activated
+    ///
+    /// Is then used to go parse these files and populate `services`
+    ///
+    /// # Command Line
+    /// Use `--services-path <PATH>` to set this value from the CLI
+    #[arg(long, env = "SERVICES_PATH")]
+    services_path: PathBuf,
 
     /// Network address to bind the server to.
     ///
@@ -144,6 +153,11 @@ impl Configuration {
     }
     */
 
+    //TODO: Responsible for parsing service configuration files present in the `services_path`
+    pub fn parse_services() -> Vec<ServiceConfig> {
+        Vec::new()
+    }
+
     /// Creates a new instance of `Configuration` by parsing either a configuration file or from
     /// the command line.
     ///
@@ -160,7 +174,10 @@ impl Configuration {
     /// # Returns
     /// A new `Configuration` instance.
     pub fn from_args() -> Self {
-        Configuration::parse()
+        let mut config = Configuration::parse();
+        config.services = Self::parse_services();
+
+        config
     }
 }
 
@@ -171,6 +188,7 @@ mod tests {
 
     #[test]
     fn test_from_args() {
+        env::set_var("SERVICES_PATH", "/tmp/test");
         env::set_var("BIND_ADDRESS", "127.0.0.1");
         env::set_var("STORAGE_PATH", "/tmp/test");
         env::set_var("WEB_UI_ENABLED", "true");
@@ -181,6 +199,7 @@ mod tests {
         let config = Configuration::from_args();
 
         //assert_eq!(config.services, expected.services);
+        assert_eq!(config.services_path, PathBuf::from("/tmp/test"));
         assert_eq!(config.bind_address, "127.0.0.1");
         assert_eq!(config.storage_path, PathBuf::from("/tmp/test"));
         assert!(config.web_ui_enabled);
