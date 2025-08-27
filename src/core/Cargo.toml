@@ -8,3 +8,5 @@ name = "miel"
 path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4.5.46", features = ["derive"]}
+clap_builder = "4.5.46"
