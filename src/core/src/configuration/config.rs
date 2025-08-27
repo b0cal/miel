@@ -1,6 +1,5 @@
 use super::types::*;
 use clap::Parser;
-use std::error::Error;
 use std::path::PathBuf;
 
 /// Application configuration structure that defines all runtime parameters.
@@ -12,8 +11,7 @@ use std::path::PathBuf;
 ///
 /// # Examples
 ///
-/// ```
-/// use std::path::PathBuf;
+/// ```no_run
 ///
 /// // Parse configuration from command line arguments
 /// let config = Configuration::from_args();
@@ -38,7 +36,7 @@ use std::path::PathBuf;
 /// - `port_filter`: Allows to filter port ranges either to blacklist or white list them
 
 #[derive(Parser, Debug, Clone)]
-struct Configuration {
+pub struct Configuration {
     /// List of service configuration
     ///
     /// This field contains the configuration for all the services needing to be exposed through
@@ -53,7 +51,7 @@ struct Configuration {
     ///
     /// Currently uses `#[arg(skip)]` to exclude from command-line parsing
     #[arg(skip)]
-    services: Vec<ServiceConfig>,
+    pub services: Vec<ServiceConfig>,
 
     /// Network address to bind the server to.
     ///
@@ -61,8 +59,8 @@ struct Configuration {
     ///
     /// # Command Line
     /// Use `--bind-address <ADDRESS>` to set this value from the CLI
-    #[arg(long)]
-    bind_address: String,
+    #[arg(long, env = "BIND_ADDRESS")]
+    pub bind_address: String,
 
     /// File system path for data storage.
     ///
@@ -72,8 +70,8 @@ struct Configuration {
     ///
     /// # Command Line
     /// Use `--storage-path <PATH>` to set this value from the CLI
-    #[arg(long)]
-    storage_path: PathBuf,
+    #[arg(long, env = "STORAGE_PATH")]
+    pub storage_path: PathBuf,
 
     /// Enable or disable the web user interface
     ///
@@ -84,8 +82,8 @@ struct Configuration {
     /// # Command Line
     /// Use `--web-ui-enabled` flag to enable the web UI. This is a boolean flag that doesn't take
     /// a value - its presence enables the feature
-    #[arg(long, action = clap::ArgAction::SetTrue)]
-    web_ui_enabled: bool,
+    #[arg(long, action = clap::ArgAction::SetTrue, env = "WEB_UI_ENABLED")]
+    pub web_ui_enabled: bool,
 
     /// Port number for the web user interface.
     ///
@@ -95,8 +93,8 @@ struct Configuration {
     ///
     /// # Command Line
     /// Use `--web-ui-port <PORT>` to set this value from the CLI
-    #[arg(long)]
-    web_ui_port: u16,
+    #[arg(long, env = "WEB_UI_PORT")]
+    pub web_ui_port: u16,
 
     /// Maximum number of concurrent sessions allowed
     ///
@@ -105,8 +103,8 @@ struct Configuration {
     ///
     /// # Command Line
     /// Use `--max-sessions <COUNT>` to set this value from the CLI
-    #[arg(long)]
-    max_sessions: usize,
+    #[arg(long, env = "MAX_SESSIONS")]
+    pub max_sessions: usize,
 
     /// Session timeout duration in seconds
     ///
@@ -116,8 +114,8 @@ struct Configuration {
     ///
     /// # Command Line
     /// Use `--session-timeout-secs <SECONDS>` to set this value from the CLI
-    #[arg(long)]
-    session_timeout_secs: u64,
+    #[arg(long, env = "SESSION_TIMEOUT_SECS")]
+    pub session_timeout_secs: u64,
 
     /// IP address filtering configuration
     ///
@@ -127,7 +125,7 @@ struct Configuration {
     /// # Note
     /// Uses `#[arg(skip)]` to exclude from command line parsing for the same reasons as `services`
     #[arg(skip)]
-    ip_filter: IpFilter,
+    pub ip_filter: IpFilter,
 
     /// Port filtering configuration
     ///
@@ -136,7 +134,7 @@ struct Configuration {
     /// # Note
     /// Uses `#[arg(skip)]` to exclude from command line parsing for the same reasons as `services`
     #[arg(skip)]
-    port_filter: PortFilter,
+    pub port_filter: PortFilter,
 }
 
 impl Configuration {
@@ -164,94 +162,31 @@ impl Configuration {
     pub fn from_args() -> Self {
         Configuration::parse()
     }
-
-    fn from_args_under_test() -> Result<Configuration, clap::Error> {
-        Configuration::try_parse_from(&[
-            "miel",
-            "--bind-address",
-            "Test",
-            "--storage-path",
-            "/tmp",
-            "--web-ui-enabled",
-            "--web-ui-port",
-            "0",
-            "--max-sessions",
-            "0",
-            "--session-timeout-secs",
-            "0",
-        ])
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr};
-    use std::path::Path;
-
-    fn sim_configuration() -> Configuration {
-        let service = ServiceConfig {
-            name: String::from("Name"),
-            port: 0,
-            protocol: Protocol::TCP,
-            container_image: String::from("Image"),
-            enabled: true,
-            header_patterns: vec![String::from("Header")],
-            banner_response: Option::from(String::from("Banner")),
-        };
-        let bind_address = String::from("Test");
-        let storage_path: PathBuf = PathBuf::from("/tmp");
-
-        let ip_range1 = IpRange {
-            start: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-            end: IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)),
-        };
-
-        let ip_range2 = IpRange {
-            start: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-            end: IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)),
-        };
-
-        let ip_filter = IpFilter {
-            allowed_ranges: vec![ip_range1],
-            blocked_ranges: vec![ip_range2],
-            whitelist_mode: true,
-        };
-
-        let port_range1 = PortRange { start: 1, end: 2 };
-        let port_range2 = PortRange { start: 1, end: 2 };
-
-        let port_filter = PortFilter {
-            allowed_ports: vec![port_range1],
-            blocked_ports: vec![port_range2],
-        };
-
-        Configuration {
-            web_ui_enabled: true,
-            web_ui_port: 0,
-            max_sessions: 0,
-            session_timeout_secs: 0,
-            services: vec![service],
-            bind_address,
-            storage_path,
-            ip_filter,
-            port_filter,
-        }
-    }
+    use std::env;
 
     #[test]
     fn test_from_args() {
-        let expected = sim_configuration();
+        env::set_var("BIND_ADDRESS", "127.0.0.1");
+        env::set_var("STORAGE_PATH", "/tmp/test");
+        env::set_var("WEB_UI_ENABLED", "true");
+        env::set_var("WEB_UI_PORT", "3000");
+        env::set_var("MAX_SESSIONS", "100");
+        env::set_var("SESSION_TIMEOUT_SECS", "3600");
 
-        let config = Configuration::from_args_under_test().unwrap_or_else(|e| panic!("{}", e));
+        let config = Configuration::from_args();
 
         //assert_eq!(config.services, expected.services);
-        assert_eq!(config.bind_address, expected.bind_address);
-        assert_eq!(config.storage_path, expected.storage_path);
-        assert_eq!(config.web_ui_enabled, expected.web_ui_enabled);
-        assert_eq!(config.web_ui_port, expected.web_ui_port);
-        assert_eq!(config.max_sessions, expected.max_sessions);
-        assert_eq!(config.session_timeout_secs, expected.session_timeout_secs);
+        assert_eq!(config.bind_address, "127.0.0.1");
+        assert_eq!(config.storage_path, PathBuf::from("/tmp/test"));
+        assert!(config.web_ui_enabled);
+        assert_eq!(config.web_ui_port, 3000);
+        assert_eq!(config.max_sessions, 100);
+        assert_eq!(config.session_timeout_secs, 3600);
         //assert_eq!(config.ip_filter, expected.ip_filter);
         //assert_eq!(config.port_filter, expected.port_filter);
     }
