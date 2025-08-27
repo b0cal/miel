@@ -1,5 +1,8 @@
+use miel::*;
+use controller_handler::*;
+
 fn main() {
-    println!("Hello, world");
+    let _controller = Controller::new();
 }
 
 #[cfg(test)]
