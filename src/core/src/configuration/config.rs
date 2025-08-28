@@ -625,3 +625,142 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod tests_from_file {
+    use super::*;
+    use std::fs::{self, File};
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    fn create_config_file(path: &std::path::Path, content: &str) {
+        let mut file = File::create(path).expect("Failed to create file");
+        file.write_all(content.as_bytes())
+            .expect("Failed to write to file");
+    }
+
+    #[test]
+    fn basic() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        // Basic configuration
+        let config_content = r#"
+            bind_address = "127.0.0.1"
+            storage_path = "/tmp/data"
+            web_ui_enabled = true
+            web_ui_port = 8080
+            max_sessions = 10
+            session_timeout_secs = 3600
+        "#;
+
+        create_config_file(&config_path, config_content);
+
+        let config = Config::from_file(&config_path).expect("Failed to load config");
+
+        assert_eq!(config.bind_address, "127.0.0.1");
+        assert_eq!(config.storage_path, PathBuf::from("/tmp/data"));
+        assert!(config.web_ui_enabled);
+        assert_eq!(config.web_ui_port, 8080);
+        assert_eq!(config.max_sessions, 10);
+        assert_eq!(config.session_timeout_secs, 3600);
+        assert!(config.services.is_empty());
+        assert!(config.ip_filter.allowed_ranges.is_empty());
+        assert!(config.port_filter.allowed_ports.is_empty());
+    }
+
+    #[test]
+    fn with_services() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+        let services_dir = dir.path().join("services");
+        fs::create_dir_all(&services_dir).unwrap();
+
+        let config_content = r#"
+            bind_address = "0.0.0.0"
+            storage_path = "/data"
+            web_ui_enabled = false
+            web_ui_port = 9000
+            max_sessions = 5
+            session_timeout_secs = 0
+        "#;
+        create_config_file(&config_path, config_content);
+
+        let service_content = r#"
+            name = "test_service"
+            port = 1234
+            protocol = "TCP"
+            container_image = "test/image:latest"
+            enabled = true
+            header_patterns = ["pattern1"]
+        "#;
+        create_config_file(&services_dir.join("service1.toml"), service_content);
+
+        // Override SERVICE_DIR environment variable
+        std::env::set_var("SERVICE_DIR", services_dir.to_str().unwrap());
+
+        let config = Config::from_file(&config_path).expect("Failed to load config");
+
+        assert_eq!(config.services.len(), 1);
+        let service = &config.services[0];
+        assert_eq!(service.name, "test_service");
+        assert_eq!(service.port, 1234);
+        assert_eq!(service.protocol, Protocol::TCP);
+        assert_eq!(service.container_image, "test/image:latest");
+        assert!(service.enabled);
+        assert_eq!(service.header_patterns, vec!["pattern1"]);
+    }
+
+    #[test]
+    fn invalid_path() {
+        let result = Config::from_file(Path::new("non_existent.toml"));
+        assert!(result.is_err());
+        match result.err().unwrap() {
+            ConfigError::IoError(_) => {}
+            _ => panic!("Expected IoError"),
+        }
+    }
+
+    #[test]
+    fn invalid_toml() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        let invalid_content = "invalid toml = ";
+        create_config_file(&config_path, invalid_content);
+
+        let result = Config::from_file(&config_path);
+        assert!(result.is_err());
+        match result.err().unwrap() {
+            ConfigError::TomlError(_) => {}
+            _ => panic!("Expected TomlError"),
+        }
+    }
+
+    #[test]
+    fn service_dir_not_exist() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        let config_content = r#"
+        bind_address = "127.0.0.1"
+        storage_path = "/tmp/data"
+        web_ui_enabled = true
+        web_ui_port = 8080
+        max_sessions = 10
+        session_timeout_secs = 3600
+    "#;
+
+        create_config_file(&config_path, config_content);
+
+        let non_existent_dir = dir.path().join("nonexistent_services");
+        std::env::set_var("SERVICE_DIR", non_existent_dir.to_str().unwrap());
+
+        let config = Config::from_file(&config_path).expect("Failed to load config");
+
+        // Services should remain empty
+        assert!(config.services.is_empty());
+        assert_eq!(config.bind_address, "127.0.0.1");
+        assert_eq!(config.storage_path, PathBuf::from("/tmp/data"));
+    }
+}

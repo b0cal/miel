@@ -15,3 +15,4 @@ clap_builder = "4.5.46"
 regex = "1.11.2"
 serde = { version = "1.0.219", features = ["derive"] }
 toml = "0.9.5"
+tempfile = "3.21.0"
