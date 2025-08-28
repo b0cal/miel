@@ -127,63 +127,42 @@ pub struct Config {
 }
 
 impl Config {
-    /// Creates a new `Configuration` instance by reading a configuration file and optionally
-    /// loading additional service configurations from a directory.
+    /// Loads a `Config` from a TOML file and optionally appends service configs.
     ///
-    /// # Details
-    /// This function performs the following steps:
-    /// 1. Reads the main configuration file at the given `path` and parses it as TOML.
-    /// 2. Reads service configuration files from a directory specified by the `SERVICE_DIR`
-    ///    environment variable (defaults to `"services"` if not set). Only files with the `.toml`
-    ///    extension are considered.
-    /// 3. Deserializes each service file as a `ServiceConfig` and appends it to the `services`
-    ///    list in the main `Config` instance.
-    ///
-    /// # Environment Variables
-    /// - `SERVICE_DIR`: Optional. Specifies the directory to search for service configuration files.
-    ///   Defaults to `"services"` if not set.
+    /// Reads the TOML file at `path` and parses it into a `Config`. If the directory
+    /// specified by the `SERVICE_DIR` environment variable (default `"services"`) exists,
+    /// all `.toml` files inside it are parsed as `ServiceConfig` and added to `config.services`.
     ///
     /// # Errors
-    /// Returns a `ConfigError` if:
-    /// - The main configuration file cannot be read (`IoError`),
-    /// - Any TOML parsing fails (`TomlError`),
-    /// - The service directory cannot be read (`IoError`),
-    /// - Any individual service file cannot be read or parsed.
+    /// Returns `ConfigError::IoError` on file read failure or `ConfigError::TomlError` on parse failure.
     ///
-    /// # Examples
+    /// # Example
     /// ```no_run
-    /// use std::path::Path;
-    ///
-    /// let config_path = Path::new("config.toml");
-    /// let config = Config::from_file(config_path)?;
+    /// let config = miel::config::Config::from_file("config.toml".as_ref())
+    ///     .expect("Failed to load configuration");
+    /// println!("Loaded {} services", config.services.len());
     /// ```
-    ///
-    /// # Returns
-    /// A `Result` containing the fully populated `Config` instance or a `ConfigError`.
     pub fn from_file(path: &Path) -> Result<Self, ConfigError> {
         let content = fs::read_to_string(path).map_err(ConfigError::IoError)?;
         let mut config: Config =
             toml::from_str(&content).map_err(|e| ConfigError::TomlError(e.to_string()))?;
 
         let service_path = env::var("SERVICE_DIR").unwrap_or_else(|_| "services".to_string());
-        for entry in fs::read_dir(Path::new(&service_path)).map_err(ConfigError::IoError)? {
-            let entry = entry.map_err(ConfigError::IoError)?;
-            let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-                let service_content = fs::read_to_string(&path).map_err(ConfigError::IoError)?;
-                let service: ServiceConfig = toml::from_str(&service_content)
-                    .map_err(|e| ConfigError::TomlError(e.to_string()))?;
-                config.services.push(service);
-            }
-        }
 
-        match config.validate() {
-            Ok(_) => Ok(config),
-            Err(err) => {
-                error!("[!]ERROR: {:?}", err);
-                Err(err)
+        if Path::new(&service_path).exists() {
+            for entry in fs::read_dir(&service_path).map_err(ConfigError::IoError)? {
+                let entry = entry.map_err(ConfigError::IoError)?;
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                    let service_content =
+                        fs::read_to_string(&path).map_err(ConfigError::IoError)?;
+                    let service: ServiceConfig = toml::from_str(&service_content)
+                        .map_err(|e| ConfigError::TomlError(e.to_string()))?;
+                    config.services.push(service);
+                }
             }
         }
+        Ok(config)
     }
 
     /// Creates a new instance of `Configuration` by parsing either a configuration file or from
