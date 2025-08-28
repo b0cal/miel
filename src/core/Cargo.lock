@@ -186,6 +186,7 @@ dependencies = [
  "clap_builder",
  "env_logger",
  "log",
+ "regex",
 ]
 
 [[package]]

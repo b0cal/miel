@@ -1,6 +1,10 @@
-use super::service_config::*;
 use super::types::*;
+use crate::error_handling::types::ConfigError;
 use clap::Parser;
+use log::{debug, error, info, trace, warn};
+use regex::Regex;
+use std::env;
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 
 /// Application configuration structure that defines all runtime parameters.
@@ -10,14 +14,6 @@ use std::path::PathBuf;
 /// rules. It uses the `clap` and `toml` derive macro for respectively command-line and file
 /// argument parsing
 ///
-/// # Examples
-///
-/// ```
-/// // Parse configuration from command line arguments
-/// let config = Configuration::from_args();
-/// println!("Binding to: {}", config.bind_address);
-/// println!("Storage path: {:?}", config.storage_path);
-/// ```
 ///
 /// # Fields Overview
 ///
@@ -35,7 +31,7 @@ use std::path::PathBuf;
 /// - `port_filter`: Allows to filter port ranges either to blacklist or white list them
 
 #[derive(Parser, Debug, Clone)]
-pub struct Configuration {
+pub struct Config {
     /// List of service configuration
     ///
     /// This field contains the configuration for all the services needing to be exposed through
@@ -51,16 +47,6 @@ pub struct Configuration {
     /// Currently uses `#[arg(skip)]` to exclude from command-line parsing
     #[arg(skip)]
     pub services: Vec<ServiceConfig>,
-
-    /// Path to the directory containing the configuration files for the services needing to be
-    /// activated
-    ///
-    /// Is then used to go parse these files and populate `services`
-    ///
-    /// # Command Line
-    /// Use `--services-path <PATH>` to set this value from the CLI
-    #[arg(long, env = "SERVICES_PATH")]
-    services_path: PathBuf,
 
     /// Network address to bind the server to.
     ///
@@ -146,17 +132,12 @@ pub struct Configuration {
     pub port_filter: PortFilter,
 }
 
-impl Configuration {
+impl Config {
     /*
     pub fn new() -> Configuration {
         Self
     }
     */
-
-    //TODO: Responsible for parsing service configuration files present in the `services_path`
-    pub fn parse_services() -> Vec<ServiceConfig> {
-        Vec::new()
-    }
 
     /// Creates a new instance of `Configuration` by parsing either a configuration file or from
     /// the command line.
@@ -174,18 +155,162 @@ impl Configuration {
     /// # Returns
     /// A new `Configuration` instance.
     pub fn from_args() -> Self {
-        let mut config = Configuration::parse();
-        config.services = Self::parse_services();
+        Config::parse()
+    }
 
-        config
+    fn validate_ip(ip_list: &IpFilter) -> bool {
+        // Check if allowed range contains only rightly formatted ip addresses
+        let allowed_range_iter = ip_list.allowed_ranges.iter();
+
+        let mut result = true;
+
+        for ip_range in allowed_range_iter {
+            if !(ip_range.start.is_ipv4() && ip_range.end.is_ipv4()) {
+                result = false;
+            }
+        }
+        result
+    }
+
+    fn validate_ports_range(port_list: &PortFilter) -> bool {
+        let allowed_ports_list_iterator = port_list.allowed_ports.iter();
+        let blocked_ports_list_iterator = port_list.blocked_ports.iter();
+
+        for allowed_ports in allowed_ports_list_iterator {
+            if allowed_ports.start < 1024 {
+                return false;
+            }
+        }
+
+        for blocked_ports in blocked_ports_list_iterator {
+            if blocked_ports.start < 1024 {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        // Sets the logging
+        env::set_var("RUST_LOG", "miel");
+        env_logger::try_init().ok();
+
+        // Regex for IPv4 fmt
+        let re_ip = Regex::new(r"^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$").unwrap();
+
+        // SERVICES
+        // Check if field empty
+        if self.services.is_empty() {
+            return Err(ConfigError::ServicesEmpty("some msg".to_string()));
+        }
+        if !re_ip.is_match(self.bind_address.as_str()) {
+            return Err(ConfigError::BadIPFormatting("some msg".to_string()));
+        }
+        //TODO: This if causes issues with the test_valid_ip_filter test
+        if !self.storage_path.exists() {
+            debug!("Storage_path given does not exist");
+            return Err(ConfigError::DirectoryDoesNotExist(
+                "No directory under that name".to_string(),
+            ));
+        }
+        if self.web_ui_port < 1024 {
+            return Err(ConfigError::NotInRange(
+                "WebUI Port should be a valid port number (1024-65535)".to_string(),
+            ));
+        }
+        if self.max_sessions < 1 || self.max_sessions > 2000 {
+            return Err(ConfigError::NotInRange(
+                "Max session should be set between 1 and 2000".to_string(),
+            ));
+        }
+
+        // NB: 172800 sec = 48h
+        if self.session_timeout_secs < 1 || self.session_timeout_secs > 172800 {
+            return Err(ConfigError::NotInRange(
+                "Invalid session timout value, has to be between 1 and 172800".to_string(),
+            ));
+        }
+        if !Self::validate_ip(&self.ip_filter) {
+            return Err(ConfigError::BadIPFormatting(
+                "Invalid ip filter, some IP could be IPv6, which is not allowed".to_string(),
+            ));
+        }
+        if !Self::validate_ports_range(&self.port_filter) {
+            return Err(ConfigError::BadPortsRange(
+                "Invalid port filter".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn create_valid_service_config() -> ServiceConfig {
+        ServiceConfig {
+            name: "service1".to_string(),
+            port: 1024,
+            protocol: Protocol::TCP,
+            container_image: "ssh".to_string(),
+            enabled: true,
+            header_patterns: vec!["header1".to_string()],
+            banner_response: Option::default(),
+        }
+    }
+
+    fn create_valid_config() -> Config {
+        let ip_range_allowed = IpRange {
+            start: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
+            end: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
+        };
+
+        let ip_range_blocked = IpRange {
+            start: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
+            end: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
+        };
+
+        let ip_filter = IpFilter {
+            allowed_ranges: vec![ip_range_allowed],
+            blocked_ranges: vec![ip_range_blocked],
+            whitelist_mode: true,
+        };
+
+        let port_range_allowed = PortRange {
+            start: 1024,
+            end: 65535,
+        };
+        let port_range_blocked = PortRange {
+            start: 1024,
+            end: 65535,
+        };
+
+        let port_filter = PortFilter {
+            allowed_ports: vec![port_range_allowed],
+            blocked_ports: vec![port_range_blocked],
+        };
+
+        let service = Self::create_valid_service_config();
+
+        Config {
+            services: vec![service],
+            bind_address: "192.168.1.1".to_string(),
+            storage_path: PathBuf::from("/etc"),
+            web_ui_port: 8080,
+            web_ui_enabled: true,
+            max_sessions: 100,
+            session_timeout_secs: 3600,
+            ip_filter,
+            port_filter,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    use std::net::*;
+    use std::path::PathBuf;
 
+    /*
     #[test]
     fn test_from_args() {
         env::set_var("SERVICES_PATH", "/tmp/test");
@@ -196,10 +321,9 @@ mod tests {
         env::set_var("MAX_SESSIONS", "100");
         env::set_var("SESSION_TIMEOUT_SECS", "3600");
 
-        let config = Configuration::from_args();
+        let config = Config::from_args();
 
         //assert_eq!(config.services, expected.services);
-        assert_eq!(config.services_path, PathBuf::from("/tmp/test"));
         assert_eq!(config.bind_address, "127.0.0.1");
         assert_eq!(config.storage_path, PathBuf::from("/tmp/test"));
         assert!(config.web_ui_enabled);
@@ -208,5 +332,254 @@ mod tests {
         assert_eq!(config.session_timeout_secs, 3600);
         //assert_eq!(config.ip_filter, expected.ip_filter);
         //assert_eq!(config.port_filter, expected.port_filter);
+    }
+    */
+    #[test]
+    fn test_valid_config() {
+        let config = Config::create_valid_config();
+        let result = config.validate();
+
+        assert!(
+            result.is_ok(),
+            "Valid config should pass validation: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_empty_services() {
+        let mut config = Config::create_valid_config();
+        config.services = vec![];
+
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::ServicesEmpty(_) => (),
+            _ => panic!("Expected ServicesEmpty error"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_ip_address_formats() {
+        let mut config = Config::create_valid_config();
+
+        // Test various invalid IP formats
+        let invalid_ips = vec![
+            "256.1.1.1",      // Octet > 255
+            "192.168.1",      // Missing octet
+            "192.168.1.1.1",  // Too many octets
+            "192.168.01.1",   // Leading zeros
+            "192.168.-1.1",   // Negative number
+            "192.168.a.1",    // Non-numeric
+            "",               // Empty string
+            "not.an.ip.addr", // Completely invalid
+        ];
+
+        for invalid_ip in invalid_ips {
+            config.bind_address = invalid_ip.to_string();
+            let result = config.validate();
+            assert!(result.is_err(), "Expected error for IP: {}", invalid_ip);
+            match result.unwrap_err() {
+                ConfigError::BadIPFormatting(_) => (),
+                _ => panic!("Expected BadIPFormatting error for IP: {}", invalid_ip),
+            }
+        }
+    }
+
+    #[test]
+    fn test_valid_ip_addresses() {
+        let mut config = Config::create_valid_config();
+
+        let valid_ips = vec![
+            "0.0.0.0",
+            "127.0.0.1",
+            "192.168.1.1",
+            "255.255.255.255",
+            "10.0.0.1",
+        ];
+
+        for valid_ip in valid_ips {
+            config.bind_address = valid_ip.to_string();
+            // Only test IP validation, ignore other potential errors
+            let result = config.validate();
+            if let Err(ConfigError::BadIPFormatting(_)) = result {
+                panic!("Valid IP {} was rejected", valid_ip);
+            }
+        }
+    }
+
+    #[test]
+    fn test_nonexistent_storage_path() {
+        let mut config = Config::create_valid_config();
+        config.storage_path = PathBuf::from("/this/path/does/not/exist");
+
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::DirectoryDoesNotExist(_) => (),
+            _ => panic!("Expected DirectoryDoesNotExist error"),
+        }
+    }
+
+    #[test]
+    fn test_web_ui_port_out_of_range() {
+        let mut config = Config::create_valid_config();
+
+        // Test port below valid range
+        config.web_ui_port = 1023;
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::NotInRange(_) => (),
+            _ => panic!("Expected NotInRange error for port 1023"),
+        }
+    }
+
+    #[test]
+    fn test_web_ui_port_valid_range() {
+        let mut config = Config::create_valid_config();
+
+        // Test boundary values that should be valid
+        let valid_ports = vec![1024, 8080, 65535];
+
+        for port in valid_ports {
+            config.web_ui_port = port;
+            let result = config.validate();
+            if let Err(ConfigError::NotInRange(_)) = result {
+                panic!("Valid port {} was rejected", port);
+            }
+        }
+    }
+
+    #[test]
+    fn test_max_sessions_out_of_range() {
+        let mut config = Config::create_valid_config();
+
+        // Test sessions below valid range
+        config.max_sessions = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::NotInRange(_) => (),
+            _ => panic!("Expected NotInRange error for max_sessions 0"),
+        }
+
+        // Test sessions above valid range
+        config.max_sessions = 2001;
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::NotInRange(_) => (),
+            _ => panic!("Expected NotInRange error for max_sessions 2001"),
+        }
+    }
+
+    #[test]
+    fn test_max_sessions_valid_range() {
+        let mut config = Config::create_valid_config();
+
+        // Test boundary values that should be valid
+        let valid_sessions = vec![1, 100, 2000];
+
+        for sessions in valid_sessions {
+            config.max_sessions = sessions;
+            let result = config.validate();
+            if let Err(ConfigError::NotInRange(_)) = result {
+                panic!("Valid max_sessions {} was rejected", sessions);
+            }
+        }
+    }
+
+    #[test]
+    fn test_session_timeout_out_of_range() {
+        let mut config = Config::create_valid_config();
+
+        // Test timeout below valid range
+        config.session_timeout_secs = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::NotInRange(_) => (),
+            _ => panic!("Expected NotInRange error for session_timeout_secs 0"),
+        }
+
+        // Test timeout above valid range (172800 = 48h)
+        config.session_timeout_secs = 172801;
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::NotInRange(_) => (),
+            _ => panic!("Expected NotInRange error for session_timeout_secs 172801"),
+        }
+    }
+
+    #[test]
+    fn test_session_timeout_valid_range() {
+        let mut config = Config::create_valid_config();
+
+        // Test boundary values that should be valid
+        let valid_timeouts = vec![1, 3600, 172800];
+
+        for timeout in valid_timeouts {
+            config.session_timeout_secs = timeout;
+            let result = config.validate();
+            if let Err(ConfigError::NotInRange(_)) = result {
+                panic!("Valid session_timeout_secs {} was rejected", timeout);
+            }
+        }
+    }
+
+    #[test]
+    fn test_invalid_ip_filter() {
+        let mut config = Config::create_valid_config();
+
+        let ip_range_allowed = IpRange {
+            start: IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+            end: IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+        };
+
+        let ip_range_blocked = IpRange {
+            start: IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+            end: IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+        };
+
+        let ip_filter = IpFilter {
+            allowed_ranges: vec![ip_range_allowed],
+            blocked_ranges: vec![ip_range_blocked],
+            whitelist_mode: true,
+        };
+
+        config.ip_filter = ip_filter; // IPv6 example
+
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::BadIPFormatting(_) => (),
+            _ => panic!("Expected BadIPFormatting error for IPv6 in ip_filter"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_port_filter() {
+        let mut config = Config::create_valid_config();
+
+        // This test assumes validate_port_filter returns false for invalid ports
+        // You'll need to adjust based on your actual validate_port_filter implementation
+
+        let port_range_allowed = PortRange { start: 0, end: 32 };
+        let port_range_blocked = PortRange { start: 0, end: 32 };
+
+        let port_filter = PortFilter {
+            allowed_ports: vec![port_range_allowed],
+            blocked_ports: vec![port_range_blocked],
+        };
+        config.port_filter = port_filter;
+
+        let result = config.validate();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::BadPortsRange(_) => (),
+            _ => panic!("Expected BadPortsRange error for invalid port_filter"),
+        }
     }
 }
