@@ -1,8 +1,5 @@
-use controller_handler::*;
-use error_handling::*;
-use miel::{error_handling::types::ConfigError, *};
-
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, trace, warn};
+use miel::controller::controller_handler::*;
 
 fn main() {
     let _controller = Controller::new();

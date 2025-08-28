@@ -1,10 +1,9 @@
 use super::types::*;
 use crate::error_handling::types::ConfigError;
 use clap::Parser;
-use log::{debug, error, info, trace, warn};
+use log::error;
 use regex::Regex;
 use std::env;
-use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 
 /// Application configuration structure that defines all runtime parameters.
@@ -18,31 +17,22 @@ use std::path::PathBuf;
 /// # Fields Overview
 ///
 /// The configuration contains the following attributes:
-/// - `services`: a list of `ServiceConfig` used further by the *Container Manager* to configure
-/// the services
+/// - `services`: a list of `ServiceConfig` used further by the *Container Manager* to configure the services
 /// - `bind_address`: For server binding
-/// /// - `storage_path`: Path locating where the data should be stored when it's a file (?) + tbd
+/// - `storage_path`: Path locating where the data should be persistently stored
 /// - `web_ui_enabled`: If `true`, will start the web UI service
 /// - `web_ui_port`: Port on which to expose the web UI service
-/// - `max_sessions`: Limiting the number of concurrent sessions to avoid DDOS and overload in
-/// general
+/// - `max_sessions`: Limiting the number of concurrent sessions to avoid DDOS and overload in general
 /// - `session_timeout_secs`: Lifetime duration of a given container
 /// - `ip_filter`: Allows to filter ip ranges either to blacklist or white list them
 /// - `port_filter`: Allows to filter port ranges either to blacklist or white list them
-
 #[derive(Parser, Debug, Clone)]
 pub struct Config {
     /// List of service configuration
     ///
     /// This field contains the configuration for all the services needing to be exposed through
     /// containers
-    /// It is not exposed as a command-line argument as it is populated with the help of the
-    /// `from_file()` function using the `services_path` field
-    ///
-    /// # Note
-    /// Couldn't it be a string containing every service name we want to activate, but
-    /// configuration files are already in a pre-defined directory where we can search for them by
-    /// name ?
+    /// It is not exposed as a command-line argument     
     ///
     /// Currently uses `#[arg(skip)]` to exclude from command-line parsing
     #[arg(skip)]
@@ -54,7 +44,7 @@ pub struct Config {
     ///
     /// # Command Line
     /// Use `--bind-address <ADDRESS>` to set this value from the CLI
-    #[arg(long, env = "BIND_ADDRESS")]
+    #[arg(long)]
     pub bind_address: String,
 
     /// File system path for data storage.
@@ -65,7 +55,7 @@ pub struct Config {
     ///
     /// # Command Line
     /// Use `--storage-path <PATH>` to set this value from the CLI
-    #[arg(long, env = "STORAGE_PATH")]
+    #[arg(long)]
     pub storage_path: PathBuf,
 
     /// Enable or disable the web user interface
@@ -77,7 +67,7 @@ pub struct Config {
     /// # Command Line
     /// Use `--web-ui-enabled` flag to enable the web UI. This is a boolean flag that doesn't take
     /// a value - its presence enables the feature
-    #[arg(long, action = clap::ArgAction::SetTrue, env = "WEB_UI_ENABLED")]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub web_ui_enabled: bool,
 
     /// Port number for the web user interface.
@@ -88,7 +78,7 @@ pub struct Config {
     ///
     /// # Command Line
     /// Use `--web-ui-port <PORT>` to set this value from the CLI
-    #[arg(long, env = "WEB_UI_PORT")]
+    #[arg(long)]
     pub web_ui_port: u16,
 
     /// Maximum number of concurrent sessions allowed
@@ -98,7 +88,7 @@ pub struct Config {
     ///
     /// # Command Line
     /// Use `--max-sessions <COUNT>` to set this value from the CLI
-    #[arg(long, env = "MAX_SESSIONS")]
+    #[arg(long)]
     pub max_sessions: usize,
 
     /// Session timeout duration in seconds
@@ -109,7 +99,7 @@ pub struct Config {
     ///
     /// # Command Line
     /// Use `--session-timeout-secs <SECONDS>` to set this value from the CLI
-    #[arg(long, env = "SESSION_TIMEOUT_SECS")]
+    #[arg(long)]
     pub session_timeout_secs: u64,
 
     /// IP address filtering configuration
@@ -133,17 +123,11 @@ pub struct Config {
 }
 
 impl Config {
-    /*
-    pub fn new() -> Configuration {
-        Self
-    }
-    */
-
     /// Creates a new instance of `Configuration` by parsing either a configuration file or from
     /// the command line.
     ///
     /// This method uses the `clap` and `toml` parsers to respectively read the command-line
-    /// arguments and a configuration file and constructs a `Configuration` instance.
+    /// arguments and a configuration file and deserialize it in a `Configuration` instance.
     ///
     /// It automatically handles argument validation and error reporting for invalid arguments
     ///
@@ -154,10 +138,20 @@ impl Config {
     ///
     /// # Returns
     /// A new `Configuration` instance.
-    pub fn from_args() -> Self {
-        Config::parse()
+    pub fn from_args() -> Result<Self, ConfigError> {
+        let config = Config::parse();
+        match config.validate() {
+            Ok(_) => Ok(config),
+            Err(err) => {
+                error!("[!] ERROR: {:?}", err);
+                Err(err)
+            }
+        }
     }
 
+    // Validates IPs in the IPFilter are only IPv4
+    //
+    // Returns true if every IP checks this condition, false otherwise
     fn validate_ip(ip_list: &IpFilter) -> bool {
         // Check if allowed range contains only rightly formatted ip addresses
         let allowed_range_iter = ip_list.allowed_ranges.iter();
@@ -172,6 +166,7 @@ impl Config {
         result
     }
 
+    // Validates port ranges are in the IANA registered and private ports
     fn validate_ports_range(port_list: &PortFilter) -> bool {
         let allowed_ports_list_iterator = port_list.allowed_ports.iter();
         let blocked_ports_list_iterator = port_list.blocked_ports.iter();
@@ -187,10 +182,21 @@ impl Config {
                 return false;
             }
         }
-
         true
     }
 
+    /// Handles the coherence checking of the fields in a `Config` structure after importing it
+    /// either from a file or the command-line
+    ///
+    /// Checks the fields one by one applying custom tests to each to ensure the value makes sense
+    /// in the context
+    ///
+    /// # Errors
+    /// If one of the fields doesn't comply with its check, a proper `ConfigError` is returned in
+    /// the result specifying the reason of the error, so the caller can handle this issue
+    ///
+    /// # Returns
+    /// A void result or a `ConfigError`
     pub fn validate(&self) -> Result<(), ConfigError> {
         // Sets the logging
         env::set_var("RUST_LOG", "miel");
@@ -202,49 +208,66 @@ impl Config {
         // SERVICES
         // Check if field empty
         if self.services.is_empty() {
-            return Err(ConfigError::ServicesEmpty("some msg".to_string()));
-        }
-        if !re_ip.is_match(self.bind_address.as_str()) {
-            return Err(ConfigError::BadIPFormatting("some msg".to_string()));
-        }
-        //TODO: This if causes issues with the test_valid_ip_filter test
-        if !self.storage_path.exists() {
-            debug!("Storage_path given does not exist");
-            return Err(ConfigError::DirectoryDoesNotExist(
-                "No directory under that name".to_string(),
+            return Err(ConfigError::ServicesEmpty(
+                "no service were specified".to_string(),
             ));
         }
+
+        // bind_address should be an IPv4
+        if !re_ip.is_match(self.bind_address.as_str()) {
+            return Err(ConfigError::BadIPFormatting(
+                "IP should follow IPv4 formatting".to_string(),
+            ));
+        }
+
+        if !self.storage_path.exists() {
+            return Err(ConfigError::DirectoryDoesNotExist(
+                "no directory under that name".to_string(),
+            ));
+        }
+
         if self.web_ui_port < 1024 {
             return Err(ConfigError::NotInRange(
-                "WebUI Port should be a valid port number (1024-65535)".to_string(),
+                "webUI Port should be a valid port number (1024-65535)".to_string(),
             ));
         }
+
         if self.max_sessions < 1 || self.max_sessions > 2000 {
             return Err(ConfigError::NotInRange(
-                "Max session should be set between 1 and 2000".to_string(),
+                "max sessions shouldn't exceed 2000".to_string(),
             ));
         }
 
         // NB: 172800 sec = 48h
         if self.session_timeout_secs < 1 || self.session_timeout_secs > 172800 {
             return Err(ConfigError::NotInRange(
-                "Invalid session timout value, has to be between 1 and 172800".to_string(),
+                "invalid session timeout value. Cannot be null and shouldn't exceed 172800"
+                    .to_string(),
             ));
         }
+
+        // IPs should all be IPv4
         if !Self::validate_ip(&self.ip_filter) {
             return Err(ConfigError::BadIPFormatting(
-                "Invalid ip filter, some IP could be IPv6, which is not allowed".to_string(),
+                "invalid ip filter, some IP could be IPv6, which is not allowed".to_string(),
             ));
         }
+
+        // Ports should be between 1024 and 65535
         if !Self::validate_ports_range(&self.port_filter) {
             return Err(ConfigError::BadPortsRange(
-                "Invalid port filter".to_string(),
+                "invalid port filter".to_string(),
             ));
         }
 
         Ok(())
     }
+}
 
+// Only compiled while in tests
+#[cfg(test)]
+impl Config {
+    // Returns a pre-filled ServiceConfig for tests purposes
     fn create_valid_service_config() -> ServiceConfig {
         ServiceConfig {
             name: "service1".to_string(),
@@ -257,7 +280,9 @@ impl Config {
         }
     }
 
+    // Returns a pre-filled Config for tests purposes
     fn create_valid_config() -> Config {
+        use std::net::{IpAddr, Ipv4Addr};
         let ip_range_allowed = IpRange {
             start: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
             end: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
@@ -303,37 +328,12 @@ impl Config {
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::net::*;
     use std::path::PathBuf;
 
-    /*
-    #[test]
-    fn test_from_args() {
-        env::set_var("SERVICES_PATH", "/tmp/test");
-        env::set_var("BIND_ADDRESS", "127.0.0.1");
-        env::set_var("STORAGE_PATH", "/tmp/test");
-        env::set_var("WEB_UI_ENABLED", "true");
-        env::set_var("WEB_UI_PORT", "3000");
-        env::set_var("MAX_SESSIONS", "100");
-        env::set_var("SESSION_TIMEOUT_SECS", "3600");
-
-        let config = Config::from_args();
-
-        //assert_eq!(config.services, expected.services);
-        assert_eq!(config.bind_address, "127.0.0.1");
-        assert_eq!(config.storage_path, PathBuf::from("/tmp/test"));
-        assert!(config.web_ui_enabled);
-        assert_eq!(config.web_ui_port, 3000);
-        assert_eq!(config.max_sessions, 100);
-        assert_eq!(config.session_timeout_secs, 3600);
-        //assert_eq!(config.ip_filter, expected.ip_filter);
-        //assert_eq!(config.port_filter, expected.port_filter);
-    }
-    */
     #[test]
     fn test_valid_config() {
         let config = Config::create_valid_config();
