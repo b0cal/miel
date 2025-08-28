@@ -1,7 +1,0 @@
-name = "my_service"
-port = 9000
-protocol = "TCP"
-container_image = "my_image:latest"
-enabled = true
-header_patterns = ["^X-Test: .*"]
-banner_response = "Welcome!"

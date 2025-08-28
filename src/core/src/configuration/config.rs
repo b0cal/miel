@@ -177,7 +177,13 @@ impl Config {
             }
         }
 
-        Ok(config)
+        match config.validate() {
+            Ok(_) => Ok(config),
+            Err(err) => {
+                error!("[!]ERROR: {:?}", err);
+                Err(err)
+            }
+        }
     }
 
     /// Creates a new instance of `Configuration` by parsing either a configuration file or from
