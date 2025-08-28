@@ -3,14 +3,38 @@ use crate::configuration::config::Config;
 use crate::error_handling::types::*;
 use std::path::PathBuf;
 use std::env;
+
+/// Application structure that defines all runtines parameters
+///
+///
+/// # Fields Overview
+///
+/// The configuration contains the following attributes:
+/// - `config`: to understand the configuration to work with
 pub struct Controller {
-    // Fields for the Controller struct
+    /// A Config instance
+    ///
+    /// This field contains all information related to a configuration
     pub config: Config,
 }
 
-// Constructor syntax
+
 impl Controller {
-    // Returns nothing for the moment
+    /// Allow to create an instance of a controller
+    ///
+    /// This function creates the controller configuration based on command line arguments
+    /// or from a configuration file
+    ///
+    ///
+    /// # Errors
+    ///
+    /// `ControllerError::Config` is returned if the configuration cannot be
+    /// created from the file or the arguments
+    ///
+    /// # Returns
+    ///
+    /// A [`Result`] containing the initialized [`Controller`] on success but on failure
+    /// a `ControllerError` is returned
     pub fn new() -> Result<Self, ControllerError> {
         info!("[+] INFO: called `new()` function in Controller");
 
