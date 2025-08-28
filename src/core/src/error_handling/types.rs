@@ -5,13 +5,17 @@ pub enum ControllerError {
 
 #[derive(Debug)]
 pub enum ConfigError {
+    InvalidFormat,
+    MissingField(String),
+    IoError(std::io::Error),
+    TomlError(String),
     ServicesEmpty(String),
     NotInRange(String),
     BadIPFormatting(String),
     BadPortsRange(String),
     DirectoryDoesNotExist(String),
-
 }
+
 #[derive(Debug)]
 pub enum SessionError {}
 
@@ -26,4 +30,3 @@ pub enum ContainerError {}
 
 #[derive(Debug)]
 pub enum StorageError {}
-

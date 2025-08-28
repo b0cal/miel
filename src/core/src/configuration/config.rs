@@ -3,8 +3,9 @@ use crate::error_handling::types::ConfigError;
 use clap::Parser;
 use log::error;
 use regex::Regex;
-use std::env;
-use std::path::PathBuf;
+use serde::Deserialize;
+use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 /// Application configuration structure that defines all runtime parameters.
 ///
@@ -26,7 +27,7 @@ use std::path::PathBuf;
 /// - `session_timeout_secs`: Lifetime duration of a given container
 /// - `ip_filter`: Allows to filter ip ranges either to blacklist or white list them
 /// - `port_filter`: Allows to filter port ranges either to blacklist or white list them
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Clone, Deserialize)]
 pub struct Config {
     /// List of service configuration
     ///
@@ -36,6 +37,7 @@ pub struct Config {
     ///
     /// Currently uses `#[arg(skip)]` to exclude from command-line parsing
     #[arg(skip)]
+    #[serde(default)]
     pub services: Vec<ServiceConfig>,
 
     /// Network address to bind the server to.
@@ -110,6 +112,7 @@ pub struct Config {
     /// # Note
     /// Uses `#[arg(skip)]` to exclude from command line parsing for the same reasons as `services`
     #[arg(skip)]
+    #[serde(default)]
     pub ip_filter: IpFilter,
 
     /// Port filtering configuration
@@ -119,10 +122,64 @@ pub struct Config {
     /// # Note
     /// Uses `#[arg(skip)]` to exclude from command line parsing for the same reasons as `services`
     #[arg(skip)]
+    #[serde(default)]
     pub port_filter: PortFilter,
 }
 
 impl Config {
+    /// Creates a new `Configuration` instance by reading a configuration file and optionally
+    /// loading additional service configurations from a directory.
+    ///
+    /// # Details
+    /// This function performs the following steps:
+    /// 1. Reads the main configuration file at the given `path` and parses it as TOML.
+    /// 2. Reads service configuration files from a directory specified by the `SERVICE_DIR`
+    ///    environment variable (defaults to `"services"` if not set). Only files with the `.toml`
+    ///    extension are considered.
+    /// 3. Deserializes each service file as a `ServiceConfig` and appends it to the `services`
+    ///    list in the main `Config` instance.
+    ///
+    /// # Environment Variables
+    /// - `SERVICE_DIR`: Optional. Specifies the directory to search for service configuration files.
+    ///   Defaults to `"services"` if not set.
+    ///
+    /// # Errors
+    /// Returns a `ConfigError` if:
+    /// - The main configuration file cannot be read (`IoError`),
+    /// - Any TOML parsing fails (`TomlError`),
+    /// - The service directory cannot be read (`IoError`),
+    /// - Any individual service file cannot be read or parsed.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use std::path::Path;
+    ///
+    /// let config_path = Path::new("config.toml");
+    /// let config = Config::from_file(config_path)?;
+    /// ```
+    ///
+    /// # Returns
+    /// A `Result` containing the fully populated `Config` instance or a `ConfigError`.
+    pub fn from_file(path: &Path) -> Result<Self, ConfigError> {
+        let content = fs::read_to_string(path).map_err(ConfigError::IoError)?;
+        let mut config: Config =
+            toml::from_str(&content).map_err(|e| ConfigError::TomlError(e.to_string()))?;
+
+        let service_path = env::var("SERVICE_DIR").unwrap_or_else(|_| "services".to_string());
+        for entry in fs::read_dir(Path::new(&service_path)).map_err(ConfigError::IoError)? {
+            let entry = entry.map_err(ConfigError::IoError)?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                let service_content = fs::read_to_string(&path).map_err(ConfigError::IoError)?;
+                let service: ServiceConfig = toml::from_str(&service_content)
+                    .map_err(|e| ConfigError::TomlError(e.to_string()))?;
+                config.services.push(service);
+            }
+        }
+
+        Ok(config)
+    }
+
     /// Creates a new instance of `Configuration` by parsing either a configuration file or from
     /// the command line.
     ///

@@ -1,0 +1,15 @@
+bind_address = "127.0.0.1"
+storage_path = "/var/data"
+web_ui_enabled = true
+web_ui_port = 8080
+max_sessions = 100
+session_timeout_secs = 3600
+
+[ip_filter]
+allowed_ranges = []
+blocked_ranges = []
+whitelist_mode = true
+
+[port_filter]
+allowed_ports = []
+blocked_ports = []
