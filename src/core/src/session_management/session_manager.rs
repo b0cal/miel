@@ -3,9 +3,4 @@ pub struct SessionManager {
     pub foo: i32,
 }
 
-impl SessionManager {
-    pub fn new() {}
-}
-
-
-
+impl SessionManager {}

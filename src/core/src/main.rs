@@ -1,12 +1,6 @@
-use controller_handler::*;
-use error_handling::*;
-use miel::{types::ConfigError, *};
-
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, trace, warn};
 
 fn main() {
-    let _controller = Controller::new();
-
     // Example how to log
     // https://docs.rs/env_logger/latest/env_logger/
     env_logger::init();

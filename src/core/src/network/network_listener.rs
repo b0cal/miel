@@ -3,11 +3,4 @@ pub struct NetworkListener {
     pub foo: i32,
 }
 
-impl NetworkListener {
-   pub fn new() -> NetworkListener{
-        NetworkListener { foo: 0 }
-   }
-}
-
-
-
+impl NetworkListener {}
