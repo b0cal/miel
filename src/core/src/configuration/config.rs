@@ -125,14 +125,26 @@ pub struct Config {
 }
 
 impl Config {
-    /// Loads a `Config` from a TOML file and optionally appends service configs.
+    /// Loads a [`Config`] from a TOML file and optionally replaces its service configs.
     ///
-    /// Reads the TOML file at `path` and parses it into a `Config`. If the directory
-    /// specified by the `SERVICE_DIR` environment variable (default `"services"`) exists,
-    /// all `.toml` files inside it are parsed as `ServiceConfig` and added to `config.services`.
+    /// This function reads the TOML file at `path` and parses it into a [`Config`].
+    /// Afterward, it checks the directory specified by the `SERVICE_DIR` environment
+    /// variable (default: `"services"`):
+    ///
+    /// - If the directory exists:
+    ///   - Any existing services defined in the parsed config are **cleared**.
+    ///   - All `.toml` files in the directory are read and parsed into [`ServiceConfig`],
+    ///     then appended to `config.services`.
+    ///
+    /// - If the directory does **not** exist:
+    ///   - The `services` field is replaced with the default service list from
+    ///     [`Config::default()`].
     ///
     /// # Errors
-    /// Returns `ConfigError::IoError` on file read failure or `ConfigError::TomlError` on parse failure.
+    ///
+    /// - Returns [`ConfigError::IoError`] if reading a file or directory entry fails.
+    /// - Returns [`ConfigError::TomlError`] if parsing the main config file or a service
+    ///   config file fails.
     ///
     /// # Example
     /// ```no_run
