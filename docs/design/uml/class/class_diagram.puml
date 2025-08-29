@@ -80,14 +80,14 @@ package "Core" {
 
 package "Network" {
   struct NetworkListener {
-    - listeners: HashMap<u16, TcpListener>
+    - listeners: HashMap<u16, TcpSocket>
     - session_tx: mpsc::Sender<SessionRequest>
     - service_detector: ServiceDetector
     - connection_filter: ConnectionFilter
     --
-    + new() -> Self
-    + bind_services(services: &[ServiceConfig]) -> Result<(), NetworkError>
-    + start_listening(session_tx: mpsc::Sender<SessionRequest>) -> Result<(), NetworkError>
+    + new(session_tx: mpsc::Sender<SessionRequest) -> Self
+    + bind_services(&mut self, services: &[ServiceConfig]) -> Result<(), NetworkError>
+    + start_listening(&self) -> Result<(), NetworkError>
     + shutdown() -> Result<(), NetworkError>
     - handle_connection(stream: TcpStream, service: &str)
   }

@@ -36,11 +36,12 @@ impl NetworkListener {
         for s in services_it {
             let socket = match TcpSocket::new_v4() {
                 Ok(sock) => sock,
-                Err(error) => {
-                    error!("[!] Socket error: {:?}", error);
-                    Err(NetworkError::SockError(error))
+                Err(err) => {
+                    error!("[!] Socket error: {:?}", err);
+                    return Err(NetworkError::SockError(err));
                 }
             };
+
             self.listeners.insert(s.port, socket);
         }
 
@@ -87,9 +88,7 @@ mod tests {
         // Create new NetworkListener
         let mut listener = NetworkListener::new(tx);
 
-        // Binding a server shouldn't return an error
-        listener
-            .bind_services(&[ServiceConfig::default()])
-            .expect("[!]ERROR: Binding not working");
+        // Binding a server shouldn't return an error, if returns Err, panic! and test fails
+        listener.bind_services(&[ServiceConfig::default()]).unwrap();
     }
 }
