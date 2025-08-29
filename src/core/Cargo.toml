@@ -13,3 +13,10 @@ log = "0.4.27"
 tokio = { version = "1.0", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4"] }
+clap = { version = "4.5.46", features = ["derive", "env"] }
+clap_builder = "4.5.46"
+regex = "1.11.2"
+serde = { version = "1.0.219", features = ["derive"] }
+toml = "0.9.5"
+tempfile = "3.21.0"
+serial_test = "3.2.0"
