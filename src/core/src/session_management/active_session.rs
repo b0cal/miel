@@ -1,10 +1,16 @@
 use crate::container_management::container_handle::ContainerHandle;
 use crate::data_capture::stream_recorder::StreamRecorder;
 use crate::session_management::session::Session;
-
 pub struct ActiveSession {
     // Fields for the ActiveSession struct
     pub session: Session,
     pub container_handle: Option<ContainerHandle>,
     pub stream_recorder: StreamRecorder,
+    pub _cleanup_handle: tokio::task::JoinHandle<()>,
+}
+
+impl ActiveSession {
+    pub fn _cleanup_handle() {
+        todo!()
+    }
 }
