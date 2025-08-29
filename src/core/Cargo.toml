@@ -18,3 +18,6 @@ toml = "0.9.5"
 tempfile = "3.21.0"
 serial_test = "3.2.0"
 tokio = { version = "1.47.1" , features = ["full"] }
+chrono = "0.4.41"
+chrono-tz = "0.10.4"
+tokio-test = "0.4.4"
