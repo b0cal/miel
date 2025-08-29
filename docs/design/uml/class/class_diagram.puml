@@ -235,12 +235,6 @@ package "Data Capture" {
     Stdout,
     Stderr
   }
-
-  enum CaptureError {
-    TcpStreamError(std::io::Error),
-    StdioError(std::io::Error),
-    StorageError(StorageError)
-  }
 }
 
 package "Container Management" {
@@ -333,7 +327,13 @@ package "Error Handling" {
   enum ConfigError {
     InvalidFormat,
     MissingField(String),
-    IoError(std::io::Error)
+    IoError(std::io::Error),
+    TomlError(String),
+    ServicesEmpty(String),
+    NotInRange(String),
+    BadIPFormatting(String),
+    BadPortsRange(String),
+    DirectoryDoesNotExist(String)
   }
 
   enum NetworkError {
@@ -347,6 +347,12 @@ package "Error Handling" {
     ContainerError(ContainerError),
     StorageError(StorageError),
     CaptureError(CaptureError)
+  }
+  
+  enum CaptureError {
+    TcpStreamError(std::io::Error),
+    StdioError(std::io::Error),
+    StorageError(StorageError)
   }
 
   enum ContainerError {
@@ -407,7 +413,5 @@ ControllerError --> SessionError
 ControllerError --> ContainerError
 ControllerError --> StorageError
 ControllerError --> WebError
-
-SessionError --> CaptureError
 
 @enduml
