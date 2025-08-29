@@ -667,3 +667,131 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod tests_from_file {
+    use super::*;
+    use serial_test::serial;
+    use std::env;
+    use std::fs;
+    use tempfile::tempdir;
+
+    /// Helper to write a TOML file to disk
+    fn write_toml_file(path: &std::path::Path, content: &str) {
+        fs::write(path, content).expect("Failed to write toml file");
+    }
+
+    #[test]
+    #[serial]
+    fn load_config_without_service_dir_and_no_env() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        let toml_content = r#"
+            bind_address = "127.0.0.1"
+        "#;
+        write_toml_file(&config_path, toml_content);
+
+        // Make sure env var is not set
+        env::remove_var("SERVICE_DIR");
+
+        let config = Config::from_file(&config_path).expect("should load config");
+
+        // Services should fall back to Config::default().services
+        assert_eq!(config.services, Config::default().services);
+        assert_eq!(config.bind_address, "127.0.0.1");
+    }
+
+    #[test]
+    #[serial]
+    fn load_config_with_services_dir_and_multiple_services() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+        let services_dir = dir.path().join("services");
+
+        fs::create_dir(&services_dir).unwrap();
+
+        // Base config
+        let toml_content = r#"
+            bind_address = "192.168.1.1"
+        "#;
+        write_toml_file(&config_path, toml_content);
+
+        // First service
+        let service1 = r#"
+            name = "dns"
+            port = 53
+            protocol = "UDP"
+            container_image = "dns-container"
+            enabled = true
+        "#;
+        write_toml_file(&services_dir.join("dns.toml"), service1);
+
+        // Second service
+        let service2 = r#"
+            name = "ftp"
+            port = 21
+            protocol = "TCP"
+            container_image = "ftp-container"
+            enabled = false
+        "#;
+        write_toml_file(&services_dir.join("ftp.toml"), service2);
+
+        // Point SERVICE_DIR to our temp dir
+        env::set_var("SERVICE_DIR", services_dir.to_str().unwrap());
+
+        let config = Config::from_file(&config_path).expect("should load config");
+
+        // Two services loaded
+        assert_eq!(config.services.len(), 2);
+        assert!(config.services.iter().any(|s| s.name == "dns"));
+        assert!(config.services.iter().any(|s| s.name == "ftp"));
+        assert_eq!(config.bind_address, "192.168.1.1");
+    }
+
+    #[test]
+    fn invalid_config_file() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        let toml_content = "invalid :: toml";
+        write_toml_file(&config_path, toml_content);
+
+        let result = Config::from_file(&config_path);
+        assert!(matches!(result, Err(ConfigError::TomlError(_))));
+    }
+
+    #[test]
+    fn missing_config_file() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("does_not_exist.toml");
+
+        let result = Config::from_file(&config_path);
+        assert!(matches!(result, Err(ConfigError::IoError(_))));
+    }
+
+    #[test]
+    #[serial]
+    fn missing_fields_use_defaults() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        // Provide only one field, the rest should fall back to defaults
+        let toml_content = r#"
+            bind_address = "10.0.0.5"
+        "#;
+        write_toml_file(&config_path, toml_content);
+
+        env::remove_var("SERVICE_DIR"); // ensure no override
+
+        let config = Config::from_file(&config_path).expect("should load config");
+
+        assert_eq!(config.bind_address, "10.0.0.5");
+        assert!(!config.web_ui_enabled); // from default
+        assert_eq!(config.web_ui_port, 8080); // from default
+        assert_eq!(config.max_sessions, 100); // from default
+        assert_eq!(config.session_timeout_secs, 3600);
+        assert_eq!(config.ip_filter, IpFilter::default());
+        assert_eq!(config.port_filter, PortFilter::default());
+    }
+}
