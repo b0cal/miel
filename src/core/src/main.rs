@@ -1,9 +1,6 @@
 use log::{debug, error, trace, warn};
-use miel::controller::controller_handler::*;
 
 fn main() {
-    let _controller = Controller::new();
-
     // Example how to log
     // https://docs.rs/env_logger/latest/env_logger/
     env_logger::init();
