@@ -1,0 +1,413 @@
+@startuml
+
+skinparam classAttributeIconSize 0
+skinparam groupInheritance 2
+hide empty methods
+hide empty members
+top to bottom direction
+skinparam backgroundColor #FEFEFE
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #333333
+
+package "Configuration" {
+  struct Config {
+    + services: Vec<ServiceConfig>
+    + bind_address: String
+    + storage_path: PathBuf
+    + web_ui_enabled: bool
+    + web_ui_port: u16
+    + max_sessions: usize
+    + session_timeout_secs: u64
+    + ip_filter: IpFilter
+    + port_filter: PortFilter
+    --
+    + from_file(path: &Path) -> Result<Self, ConfigError>
+    + from_args() -> Result<Self, ConfigError>
+    + validate(&self) -> Result<(), ConfigError>
+  }
+
+  struct ServiceConfig {
+    + name: String
+    + port: u16
+    + protocol: Protocol
+    + container_image: String
+    + enabled: bool
+    + header_patterns: Vec<String>
+    + banner_response: Option<String>
+  }
+
+  struct IpFilter {
+    + allowed_ranges: Vec<IpRange>
+    + blocked_ranges: Vec<IpRange>
+    + whitelist_mode: bool
+  }
+
+  struct PortFilter {
+    + allowed_ports: Vec<PortRange>
+    + blocked_ports: Vec<PortRange>
+  }
+
+  struct IpRange {
+    + start: IpAddr
+    + end: IpAddr
+  }
+
+  struct PortRange {
+    + start: u16
+    + end: u16
+  }
+
+  enum Protocol {
+    TCP,
+    UDP
+  }
+}
+
+package "Core" {
+  struct Controller {
+    - config: Config
+    - listener: NetworkListener
+    - session_manager: SessionManager
+    - container_manager: ContainerManager
+    - storage: Box<dyn Storage>
+    - web_server: Option<WebServer>
+    --
+    + new(config: Config) -> Result<Self, ControllerError>
+    + run() -> Result<(), ControllerError>
+    + shutdown() -> Result<(), ControllerError>
+  }
+}
+
+package "Network" {
+  struct NetworkListener {
+    - listeners: HashMap<u16, TcpListener>
+    - session_tx: mpsc::Sender<SessionRequest>
+    - service_detector: ServiceDetector
+    - connection_filter: ConnectionFilter
+    --
+    + new() -> Self
+    + bind_services(services: &[ServiceConfig]) -> Result<(), NetworkError>
+    + start_listening(session_tx: mpsc::Sender<SessionRequest>) -> Result<(), NetworkError>
+    + shutdown() -> Result<(), NetworkError>
+    - handle_connection(stream: TcpStream, service: &str)
+  }
+
+  struct ServiceDetector {
+    - service_patterns: HashMap<String, Vec<ServicePattern>>
+    --
+    + new(services: &[ServiceConfig]) -> Self
+    + identify_service(stream: &TcpStream) -> Result<String, NetworkError>
+    + detect_from_payload(data: &[u8]) -> Option<String>
+    + detect_from_port(port: u16) -> Option<String>
+  }
+
+  struct ConnectionFilter {
+    - ip_filter: IpFilter
+    - port_filter: PortFilter
+    - protocol_filter: ProtocolFilter
+    --
+    + new(ip_filter: IpFilter, port_filter: PortFilter) -> Self
+    + should_accept_connection(addr: SocketAddr, service: &str) -> bool
+    + is_ip_allowed(ip: IpAddr) -> bool
+    + is_port_allowed(port: u16) -> bool
+  }
+
+  struct ProtocolFilter {
+    + allowed_protocols: Vec<Protocol>
+    + blocked_protocols: Vec<Protocol>
+  }
+
+  struct ServicePattern {
+    + service_name: String
+    + port: u16
+    + protocol: Protocol
+    + header_patterns: Vec<String>
+    + banner_patterns: Vec<String>
+  }
+
+  struct SessionRequest {
+    + stream: TcpStream
+    + service_name: String
+    + client_addr: SocketAddr
+    + timestamp: DateTime<Utc>
+  }
+}
+
+package "Session Management" {
+  struct SessionManager {
+    - active_sessions: HashMap<Uuid, ActiveSession>
+    - container_manager: Arc<ContainerManager>
+    - storage: Arc<dyn Storage>
+    - max_sessions: usize
+    - session_timeout: Duration
+    --
+    + new(container_manager: Arc<ContainerManager>, storage: Arc<dyn Storage>, max_sessions: usize) -> Self
+    + handle_session(request: SessionRequest) -> Result<(), SessionError>
+    + cleanup_expired_sessions()
+    + get_active_session_count() -> usize
+    + shutdown_all_sessions() -> Result<(), SessionError>
+    - create_session(request: SessionRequest) -> Result<Session, SessionError>
+    - setup_data_proxy(session_id: Uuid, client_stream: TcpStream, container_stream: TcpStream) -> Result<(), SessionError>
+  }
+
+  struct Session {
+    + id: Uuid
+    + service_name: String
+    + client_addr: SocketAddr
+    + start_time: DateTime<Utc>
+    + end_time: Option<DateTime<Utc>>
+    + container_id: Option<String>
+    + bytes_transferred: u64
+    + status: SessionStatus
+  }
+
+  struct ActiveSession {
+    + session: Session
+    + container_handle: Option<ContainerHandle>
+    + stream_recorder: StreamRecorder
+    + _cleanup_handle: tokio::task::JoinHandle<()>
+  }
+
+  enum SessionStatus {
+    Pending,
+    Active,
+    Completed,
+    Error
+  }
+}
+
+package "Data Capture" {
+  struct StreamRecorder {
+    - session_id: Uuid
+    - tcp_capture: TcpCapture
+    - stdio_capture: Option<StdioCapture>
+    - storage: Arc<dyn Storage>
+    --
+    + new(session_id: Uuid, storage: Arc<dyn Storage>) -> Self
+    + start_tcp_proxy(client_stream: TcpStream, container_stream: TcpStream) -> Result<(), CaptureError>
+    + start_stdio_capture(pty_master: File) -> Result<(), CaptureError>
+    + finalize_capture() -> Result<CaptureArtifacts, CaptureError>
+  }
+
+  struct TcpCapture {
+    - session_id: Uuid
+    - client_to_container: Vec<u8>
+    - container_to_client: Vec<u8>
+    - timestamps: Vec<(DateTime<Utc>, Direction, usize)>
+    --
+    + new(session_id: Uuid) -> Self
+    + proxy_and_record(client_stream: TcpStream, container_stream: TcpStream) -> Result<(), CaptureError>
+    + get_artifacts() -> (Vec<u8>, Vec<u8>, Vec<(DateTime<Utc>, Direction, usize)>)
+  }
+
+  struct StdioCapture {
+    - session_id: Uuid
+    - stdin_data: Vec<u8>
+    - stdout_data: Vec<u8>
+    - stderr_data: Vec<u8>
+    - timestamps: Vec<(DateTime<Utc>, StdioStream, usize)>
+    --
+    + new(session_id: Uuid) -> Self
+    + capture_pty(pty_master: File) -> Result<(), CaptureError>
+    + get_artifacts() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<(DateTime<Utc>, StdioStream, usize)>)
+  }
+
+  struct CaptureArtifacts {
+    + session_id: Uuid
+    + tcp_client_to_container: Vec<u8>
+    + tcp_container_to_client: Vec<u8>
+    + stdio_stdin: Vec<u8>
+    + stdio_stdout: Vec<u8>
+    + stdio_stderr: Vec<u8>
+    + tcp_timestamps: Vec<(DateTime<Utc>, Direction, usize)>
+    + stdio_timestamps: Vec<(DateTime<Utc>, StdioStream, usize)>
+    + total_bytes: u64
+    + duration: Duration
+  }
+
+  enum Direction {
+    ClientToContainer,
+    ContainerToClient
+  }
+
+  enum StdioStream {
+    Stdin,
+    Stdout,
+    Stderr
+  }
+
+  enum CaptureError {
+    TcpStreamError(std::io::Error),
+    StdioError(std::io::Error),
+    StorageError(StorageError)
+  }
+}
+
+package "Container Management" {
+  struct ContainerManager {
+    - runtime: Runtime
+    - active_containers: HashMap<String, ContainerHandle>
+    --
+    + new() -> Result<Self, ContainerError>
+    + create_container(service_config: &ServiceConfig) -> Result<ContainerHandle, ContainerError>
+    + cleanup_container(handle: ContainerHandle) -> Result<(), ContainerError>
+    + cleanup_all_containers() -> Result<(), ContainerError>
+    + get_container_stats() -> ContainerStats
+  }
+
+  struct ContainerHandle {
+    + id: String
+    + service_name: String
+    + port: u16
+    + created_at: DateTime<Utc>
+    + process_handle: Option<tokio::process::Child>
+    + pty_master: Option<File>
+    + tcp_socket: Option<TcpStream>
+  }
+
+  struct ContainerStats {
+    + active_count: usize
+    + total_created: u64
+    + failed_count: u64
+  }
+
+  enum Runtime {
+    SystemdNspawn,
+  }
+}
+
+package "Storage" {
+  interface Storage {
+    + save_session(session: &Session) -> Result<(), StorageError>
+    + get_sessions(filter: Option<SessionFilter>) -> Result<Vec<Session>, StorageError>
+    + save_interaction(session_id: Uuid, data: &[u8]) -> Result<(), StorageError>
+    + get_session_data(session_id: Uuid) -> Result<Vec<u8>, StorageError>
+    + cleanup_old_sessions(older_than: DateTime<Utc>) -> Result<usize, StorageError>
+    + save_capture_artifacts(artifacts: &CaptureArtifacts) -> Result<(), StorageError>
+    + get_capture_artifacts(session_id: Uuid) -> Result<CaptureArtifacts, StorageError>
+  }
+
+  struct FileStorage {
+    - base_path: PathBuf
+    - session_index: HashMap<Uuid, PathBuf>
+    - artifacts_path: PathBuf
+  }
+
+  struct DatabaseStorage {
+    - connection_pool: sqlx::Pool<sqlx::Sqlite>
+  }
+
+  struct SessionFilter {
+    + service_name: Option<String>
+    + start_date: Option<DateTime<Utc>>
+    + end_date: Option<DateTime<Utc>>
+    + client_addr: Option<IpAddr>
+    + status: Option<SessionStatus>
+  }
+}
+
+package "Web Interface" {
+  struct WebServer {
+    - storage: Arc<dyn Storage>
+    - session_manager: Arc<SessionManager>
+    --
+    + new(storage: Arc<dyn Storage>, session_manager: Arc<SessionManager>) -> Self
+    + start(port: u16) -> Result<(), WebError>
+    - get_dashboard() -> impl warp::Reply
+    - get_sessions() -> impl warp::Reply
+    - get_session_data(id: Uuid) -> impl warp::Reply
+    - download_capture_artifacts(id: Uuid) -> impl warp::Reply
+  }
+}
+
+package "Error Handling" {
+  enum ControllerError {
+    Config(ConfigError),
+    Network(NetworkError),
+    Session(SessionError),
+    Container(ContainerError),
+    Storage(StorageError),
+    Web(WebError)
+  }
+
+  enum ConfigError {
+    InvalidFormat,
+    MissingField(String),
+    IoError(std::io::Error)
+  }
+
+  enum NetworkError {
+    BindFailed(std::io::Error),
+    ConnectionFailed,
+    ServiceDetectionFailed
+  }
+
+  enum SessionError {
+    CreationFailed,
+    ContainerError(ContainerError),
+    StorageError(StorageError),
+    CaptureError(CaptureError)
+  }
+
+  enum ContainerError {
+    RuntimeNotAvailable,
+    CreationFailed(String),
+    StartFailed(String)
+  }
+
+  enum StorageError {
+    ConnectionFailed,
+    WriteFailed,
+    ReadFailed
+  }
+
+  enum WebError {
+    StartFailed(String),
+    RequestFailed
+  }
+}
+
+' Relationships
+Controller *-- Config
+Controller *-- NetworkListener
+Controller *-- SessionManager
+Controller *-- ContainerManager
+Controller o-- Storage
+Controller o-- WebServer
+
+NetworkListener *-- ServiceDetector
+NetworkListener *-- ConnectionFilter
+NetworkListener --> SessionRequest
+
+SessionManager *-- ActiveSession
+SessionManager --> ContainerManager
+SessionManager --> Storage
+ActiveSession *-- Session
+ActiveSession *-- StreamRecorder
+ActiveSession o-- ContainerHandle
+
+StreamRecorder *-- TcpCapture
+StreamRecorder o-- StdioCapture
+StreamRecorder --> Storage
+StreamRecorder --> CaptureArtifacts
+
+ContainerManager *-- Runtime
+ContainerManager --> ContainerHandle
+
+FileStorage ..|> Storage
+DatabaseStorage ..|> Storage
+
+WebServer --> Storage
+WebServer --> SessionManager
+
+' Error relationships
+ControllerError --> ConfigError
+ControllerError --> NetworkError
+ControllerError --> SessionError
+ControllerError --> ContainerError
+ControllerError --> StorageError
+ControllerError --> WebError
+
+SessionError --> CaptureError
+
+@enduml
