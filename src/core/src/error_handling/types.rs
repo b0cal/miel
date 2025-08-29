@@ -1,9 +1,15 @@
 #[derive(Debug)]
-#[derive(Debug)]
 pub enum ControllerError {
-    //ex : Config(ConfigError),
+    Config(ConfigError),
+    Network(NetworkError),
+    Session(SessionError),
+    Container(ContainerError),
+    Storage(StorageError),
+    Web(WebError),
 }
 
+// InvalidFormat and MissingField are not currently used in Config because the crate toml does
+// only differentiate between the two in the message returned with the Error, so better to use TomlError(String)
 #[derive(Debug)]
 pub enum ConfigError {
     InvalidFormat,
@@ -18,15 +24,25 @@ pub enum ConfigError {
 }
 
 #[derive(Debug)]
-pub enum SessionError {}
+pub enum SessionError {
+    CreationFailed,
+    ContainerError(ContainerError),
+    StorageError(StorageError),
+    CaptureError(CaptureError),
+}
 
 #[derive(Debug)]
-#[derive(Debug)]
-pub enum WebError {}
+pub enum WebError {
+    RequestFailed,
+    StartFailed(String),
+}
 
 #[derive(Debug)]
-#[derive(Debug)]
-pub enum NetworkError {}
+pub enum NetworkError {
+    ConnectionFailed,
+    ServiceDetectionFailed,
+    BindFail(std::io::Error),
+}
 
 #[derive(Debug)]
 pub enum ContainerError {
@@ -58,4 +74,15 @@ impl From<std::io::Error> for ContainerError {
 }
 
 #[derive(Debug)]
-pub enum StorageError {}
+pub enum StorageError {
+    ConnectionFailed,
+    WriteFailed,
+    ReadFailed,
+}
+
+#[derive(Debug)]
+pub enum CaptureError {
+    TcpStreamError(std::io::Error),
+    StdioError(std::io::Error),
+    StorageError(StorageError),
+}
