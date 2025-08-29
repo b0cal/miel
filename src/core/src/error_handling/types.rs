@@ -39,6 +39,7 @@ pub enum WebError {
 
 #[derive(Debug)]
 pub enum NetworkError {
+    ChannelFailed,
     SockError(std::io::Error),
     ConnectionFailed,
     ServiceDetectionFailed,

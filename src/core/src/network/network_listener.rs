@@ -1,12 +1,16 @@
 use super::connection_filter::*;
 use super::service_detector::*;
 use super::session_request::*;
-use crate::configuration::types::{IpFilter, PortFilter, ServiceConfig};
+use crate::configuration::types::ServiceConfig;
 use crate::error_handling::types::NetworkError;
+use chrono::Utc;
 use log::error;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_test::io::{Builder, Mock};
 
 use std::collections::HashMap;
-use tokio::net::{TcpSocket, TcpStream};
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::mpsc::Sender;
 
 pub struct NetworkListener {
@@ -24,7 +28,7 @@ impl NetworkListener {
             service_detector: ServiceDetector {
                 service_patterns: HashMap::new(),
             },
-            connection_filter: ConnectionFilter::new(),
+            connection_filter: ConnectionFilter::default(),
         }
     }
     /// Binds services given in the `ServiceConfig` structure
@@ -47,22 +51,55 @@ impl NetworkListener {
 
         Ok(())
     }
+
+    // Not meant to stay, just so we can replicate the service for now
+    async fn start_http_server() {
+        let listener = TcpListener::bind("0.0.0.0:8000").await.unwrap();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buffer = [0; 1024];
+                    let _ = stream.read(&mut buffer).await;
+
+                    let response = "HTTP/1.1 200 OK\r\n\r\nHello World!";
+                    let _ = stream.write_all(response.as_bytes()).await;
+                });
+            }
+        });
+    }
+
+    // First formulates a SessionRequest and send it through the mpsc channel
+    //
+    // If Ok response from SessionManager, bind with Configuration::bind_address (same IP for every
+    // socket)
     pub async fn start_listening(&self) -> Result<(), NetworkError> {
+        // For testing purposes we need to have the TcpStream address and port available, for now
+        // we use a simple HTTP server that responds '200 OK Hello World'
+        Self::start_http_server().await;
+
+        let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 8000);
+
+        let request = SessionRequest {
+            stream: TcpStream::connect("0.0.0.0:8000").await.unwrap(),
+            service_name: "test_service".to_string(),
+            client_addr,
+            timestamp: Utc::now(),
+        };
+
+        match self.session_tx.send(request).await {
+            Ok(_) => (),
+            Err(_) => {
+                return Err(NetworkError::ChannelFailed);
+            }
+        }
+
         Ok(())
     }
     pub fn shutdown() -> Result<(), NetworkError> {
         Ok(())
     }
     fn handle_connection(stream: TcpStream, service: &str) {}
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Utc;
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    use tokio::sync::mpsc;
-    use tokio_test::io::{Builder, Mock};
 
     fn create_mock_stream() -> Mock {
         Builder::new().read(b"hello").write(b"world").build()
@@ -79,6 +116,15 @@ mod tests {
             timestamp: Utc::now(),
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use tokio::sync::mpsc;
+    use tokio_test::io::{Builder, Mock};
 
     #[test]
     fn test_bind_services_from_legit_file() {
@@ -90,5 +136,19 @@ mod tests {
 
         // Binding a server shouldn't return an error, if returns Err, panic! and test fails
         listener.bind_services(&[ServiceConfig::default()]).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_start_listening_channel_communication() {
+        let (tx, mut rx) = mpsc::channel(100);
+
+        let mut listener = NetworkListener::new(tx);
+        listener.bind_services(&[ServiceConfig::default()]).unwrap();
+
+        listener.start_listening().await.unwrap();
+
+        let received = rx.recv().await.unwrap();
+
+        assert_eq!(received.service_name, "test_service".to_string());
     }
 }

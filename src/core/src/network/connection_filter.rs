@@ -7,8 +7,8 @@ pub struct ConnectionFilter {
     protocol_filter: ProtocolFilter,
 }
 
-impl ConnectionFilter {
-    pub fn new() -> Self {
+impl Default for ConnectionFilter {
+    fn default() -> Self {
         Self {
             ip_filter: IpFilter::default(),
             port_filter: PortFilter::default(),
@@ -16,4 +16,3 @@ impl ConnectionFilter {
         }
     }
 }
-pub struct ConnectionFilter {}
