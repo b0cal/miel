@@ -1,3 +1,56 @@
+//! # Network Listener Module
+//!
+//! This module provides network listening capacities for handling incoming TCP connections and
+//! routing them to appropriate service based on detected protocol
+//!
+//! The main component is [`NetworkListener`] which manages multiple TCP sockets, detects incoming
+//! service types, filters connections, and forwards valid sessions to the [`SessionManager`] via
+//! [`SessionRequest`] through an async channel.
+//!
+//! ## Architecture
+//!
+//! ```text
+//! ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+//! │ Incoming        │───▶│ NetworkListener  │───▶│ SessionManager  │
+//! │ Connections     │    │                  │    │ (via mpsc)      │
+//! └─────────────────┘    │ - Service Detection   └─────────────────┘
+//!                        │ - Connection Filter
+//!                        │ - Protocol Analysis
+//!                        └──────────────────┘
+//! ```
+//!
+//! ## Usage
+//!
+//! ```rust,no_run
+//! use tokio::sync::mpsc;
+//! use miel::configuration::types::ServiceConfig;
+//! use miel::network::network_listener::NetworkListener;
+//! use miel::error_handling::types::NetworkError;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), NetworkError> {
+//!     // Create a channel for session requests
+//!     let (tx, rx) = mpsc::channel(100);
+//!     
+//!     // Initialize the network listener
+//!     let mut listener = NetworkListener::new(tx);
+//!     
+//!     // Configure services to listen on
+//!     let services = vec![
+//!         ServiceConfig { port: 8080, ..Default::default() },
+//!         ServiceConfig { port: 8443, ..Default::default() },
+//!     ];
+//!
+//!     // Bind to the configured service
+//!     listener.bind_services(&services)?;
+//!
+//!     // Start listening for connections
+//!     listener.start_listening().await?;
+//!
+//!     Ok(())
+//! }
+//! ```
+
 use super::connection_filter::*;
 use super::service_detector::*;
 use super::session_request::*;
@@ -13,14 +66,68 @@ use std::collections::HashMap;
 use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::mpsc::Sender;
 
+/// A network listener that manages multiple TCP socket and routes connections to services.
+///
+/// `NetworkListener` is responsible for:
+/// - Binding to multiple ports based on service configuration
+/// - Detecting the type of incoming service requests
+/// - Filtering connections based on security policies
+/// - Forwarding valid sessions to the session manager
+///
+/// The listener operates asynchronously and uses an MPSC channel to communicate with the session
+/// manager
+///
+/// # Examples
+///
+/// ```rust, no_run
+/// use tokio::sync::mpsc;
+/// use miel::network::network_listener::NetworkListener;
+/// use miel::configuration::types::ServiceConfig;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let (tx, rx) = mpsc::channel(100);
+///     let mut listener = NetworkListener::new(tx);
+///
+///     // Configure and bind services
+///     let services = vec![ServiceConfig::default()];
+///     listener.bind_services(&services).unwrap();
+/// }
+/// ```
 pub struct NetworkListener {
+    /// Map of port number to their corresponding TCP sockets
     listeners: HashMap<u16, TcpSocket>,
+
+    /// Channel sender for forwarding session requests to the session manager
     session_tx: Sender<SessionRequest>,
+
+    /// Service detection component for identifying connection protocols
     service_detector: ServiceDetector,
+
+    /// Connection filtering component for security and access control
     connection_filter: ConnectionFilter,
 }
 
 impl NetworkListener {
+    /// Creates a new `NetworkListener` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_tx` - A channel sender for forwarding session requests to the session manager
+    ///
+    /// # Returns
+    ///
+    /// A new `NetworkListener` with empty listeners and default components.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use tokio::sync::mpsc;
+    /// use miel::network::network_listener::NetworkListener;
+    ///
+    /// let (tx, rx) = mpsc::channel(100);
+    /// let listener = NetworkListener::new(tx);
+    /// ```
     pub fn new(session_tx: Sender<SessionRequest>) -> Self {
         Self {
             listeners: HashMap::new(),
@@ -31,7 +138,49 @@ impl NetworkListener {
             connection_filter: ConnectionFilter::default(),
         }
     }
-    /// Binds services given in the `ServiceConfig` structure
+
+    /// Binds TCP sockets to the ports specified in the service configurations.
+    ///
+    /// This method creates and configures TCP sockets for each service, storing them in the
+    /// internal listeners map. It also initializes the service detector with the provided service
+    /// configurations
+    ///
+    /// # Arguments
+    ///
+    /// * `services` - A slice of service configurations containing port and protocol information
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if all services were successfully bound
+    /// * `Err(NetworkError::SockError)` if any socket creation fails
+    ///
+    /// # Error
+    ///
+    /// This function will return an error if:
+    /// - TCP socket creation fails for any of the specified ports
+    /// - The system runs out of available file descriptors
+    /// - Permission is denied for binding to privileged ports (< 1024)
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use tokio::mpsc;
+    /// use miel::configuration::types::ServiceConfig;
+    /// use miel::network::network_listener::NetworkListener;
+    ///
+    /// let (tx, rx) = mpsc::channel(100);
+    /// let mut listener = NetworkListener::new(tx);
+    ///
+    /// let services = vec![
+    ///     ServiceConfig { port: 8080, ..Default::default() },
+    ///     ServiceConfig { port: 8443, ..Default::default() }
+    /// ]
+    ///
+    /// match listener.bind_services(&services) {
+    ///     Ok(()) => println!("All services bound successfully"),
+    ///     Err(e) => eprintln!("Failed to bind services: {:?}", e),
+    /// }
+    /// ```
     pub fn bind_services(&mut self, services: &[ServiceConfig]) -> Result<(), NetworkError> {
         self.service_detector = ServiceDetector::new(services);
 
@@ -69,10 +218,51 @@ impl NetworkListener {
         });
     }
 
-    // First formulates a SessionRequest and send it through the mpsc channel
-    //
-    // If Ok response from SessionManager, bind with Configuration::bind_address (same IP for every
-    // socket)
+    /// Starts listening for incoming connections and processes them.
+    ///
+    /// This method begins the main listening loop, accepting incoming connections, performing
+    /// service detection, and forwarding valid sessions to the session manager
+    ///
+    /// The method currently includes test code :
+    /// 1. Starts a test HTTP server
+    /// 2. Creates a test connection
+    /// 3. Sends a test session request through the channel
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the listening process starts successfully
+    /// * `Err(NetworkError::ChannelFailed)` if sending through the session channel fails
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The session channel is closed or full
+    /// - Network connection establishment fails
+    ///
+    /// # Note
+    ///
+    /// The current implementation is primarly for testing. In production, this method should
+    /// implement the full listening loop for all configured services.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run`
+    /// use::tokio::sync::mpsc;
+    /// use miel::network::network_listener::NetworkListener;
+    /// use miel::configuration::types::ServiceConfig;
+    /// use miel::error_handling::types::NetworkError;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), NetworkError> {
+    ///     let (tx, rx) = mpsc::channel(100);
+    ///     let mut listener = NetworkListener::new(tx);
+    ///
+    ///     listener.bind_services(&[ServiceConfig::default()])?;
+    ///     listener.start_listening().await?;
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
     pub async fn start_listening(&self) -> Result<(), NetworkError> {
         // For testing purposes we need to have the TcpStream address and port available, for now
         // we use a simple HTTP server that responds '200 OK Hello World'
