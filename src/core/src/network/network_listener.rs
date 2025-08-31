@@ -55,11 +55,15 @@ use super::connection_filter::*;
 use super::service_detector::*;
 use super::session_request::*;
 use crate::configuration::types::ServiceConfig;
+use crate::connection_filter;
 use crate::error_handling::types::NetworkError;
+use crate::service_detector;
 use chrono::Utc;
 use log::error;
+use serde::ser;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::task::JoinHandle;
 use tokio_test::io::{Builder, Mock};
 
 use std::collections::HashMap;
@@ -263,33 +267,165 @@ impl NetworkListener {
     ///     Ok(())
     /// }
     /// ```
-    pub async fn start_listening(&self) -> Result<(), NetworkError> {
+    pub async fn start_listening(&mut self) -> Result<(), NetworkError> {
+        // Will handle waiting all listeners tasks to complete
+        let mut listener_handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
+
+        // Bind all sockets and create listeners
+        for (port, socket) in self.listeners.drain() {
+            //TODO: Not sure of what should be the address to bind to
+            let addr = SocketAddr::from(([0, 0, 0, 0], port));
+
+            // Bind socket to the address
+            if let Err(e) = socket.bind(addr) {
+                error!("[!] Failed to bind to port {}: {:?}", port, e);
+                return Err(NetworkError::BindError(e));
+            }
+
+            //TODO: to discuss but could it be a good idea to have associated functions in the
+            //Controller to get any of the configuration value (i.e. max_connections for this part
+            //of the function)
+
+            // Convert to listener
+            let listener = match socket.listen(1024) {
+                // backlog value should
+                // correspond to max_connection from controller
+                Ok(listener) => listener,
+                Err(e) => {
+                    error!("[!] Failed to listen on port {}: {:?}", port, e);
+                    return Err(NetworkError::BindError(e));
+                }
+            };
+
+            log::info!("[+] Successfully bound to port {}", port);
+
+            // TODO: Implement Clone trait on service_detector and connection_filter
+            //
+            // Clone components used for the async listening session
+            let session_tx = self.session_tx.clone();
+            let service_detector = self.service_detector.clone();
+            let connection_filter = self.connection_filter.clone();
+
+            let handle = tokio::spawn(async move {
+                Self::listen_on_port(
+                    listener,
+                    session_tx,
+                    service_detector,
+                    connection_filter,
+                    port,
+                )
+                .await
+            });
+
+            listener_handles.push(handle);
+        }
+
+        //Wait for all listener tasks to complete
+        for handle in listener_handles {
+            if let Err(e) = handle.await {
+                error!("[!] Listener task panicked: {:?}", e);
+            }
+        }
         // For testing purposes we need to have the TcpStream address and port available, for now
         // we use a simple HTTP server that responds '200 OK Hello World'
-        Self::start_http_server().await;
+        Ok(())
+    }
 
-        let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 8000);
+    async fn listen_on_port(
+        listener: TcpListener,
+        session_tx: Sender<SessionRequest>,
+        service_detector: ServiceDetector,
+        connection_filter: ConnectionFilter,
+        port: u16,
+    ) {
+        log::info!("[+] Started listening on port {}", port);
 
-        let request = SessionRequest {
-            stream: TcpStream::connect("0.0.0.0:8000").await.unwrap(),
-            service_name: "test_service".to_string(),
+        loop {
+            //Accept incomming connection
+            let (stream, client_addr) = match listener.accept().await {
+                Ok((stream, addr)) => (stream, addr),
+                Err(e) => {
+                    error!("[!] Failed to accept connection on port {}: {:?}", port, e);
+                    continue;
+                }
+            };
+
+            log::debug!("[+] New connection from {} on port {}", client_addr, port);
+
+            // Check if connection should be accepted
+            if !connection_filter.should_accept_connection(&client_addr.ip(), port) {
+                log::warn!("[!] Connection from {} rejected by filter", client_addr);
+                continue;
+            }
+
+            // Clone components for the connection handling task
+            let session_tx_clone = session_tx.clone();
+            let service_detector_clone = service_detector.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = Self::handle_connection(
+                    stream,
+                    client_addr,
+                    port,
+                    session_tx_clone,
+                    service_detector_clone,
+                )
+                .await
+                {
+                    error!(
+                        "[!] Error handling connection from {}: {:?}",
+                        client_addr, e
+                    );
+                }
+            });
+        }
+    }
+
+    pub fn shutdown() -> Result<(), NetworkError> {
+        Ok(())
+    }
+    async fn handle_connection(
+        stream: TcpStream,
+        client_addr: SocketAddr,
+        port: u16,
+        session_tx: Sender<SessionRequest>,
+        service_detector: ServiceDetector,
+    ) -> Result<(), NetworkError> {
+        let service_name = match service_detector.detect_service(&stream, port).await {
+            Ok(name) => name,
+            Err(e) => {
+                log::warn!(
+                    "[!] Failed to detect service for connection from {}: {:?}",
+                    client_addr,
+                    e
+                );
+                return Err(e);
+            }
+        };
+
+        log::info!(
+            "[+] Detected sevice '{}' for connection from {}",
+            service_name,
+            client_addr
+        );
+
+        // Create session request
+        let session_request = SessionRequest {
+            stream,
+            service_name,
             client_addr,
             timestamp: Utc::now(),
         };
 
-        match self.session_tx.send(request).await {
-            Ok(_) => (),
-            Err(_) => {
-                return Err(NetworkError::ChannelFailed);
-            }
+        if let Err(_) = session_tx.send(session_request).await {
+            log::error!("[!] Failed to send session request - channel may be closed");
+            return Err(NetworkError::ChannelFailed);
         }
+
+        log::debug!("[+] Session request sent successfully for {}", client_addr);
 
         Ok(())
     }
-    pub fn shutdown() -> Result<(), NetworkError> {
-        Ok(())
-    }
-    fn handle_connection(stream: TcpStream, service: &str) {}
 
     fn create_mock_stream() -> Mock {
         Builder::new().read(b"hello").write(b"world").build()
