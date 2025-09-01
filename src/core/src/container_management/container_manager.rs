@@ -101,11 +101,7 @@ impl ContainerManager {
         &mut self,
         service_config: &ServiceConfig,
     ) -> Result<ContainerHandle, ContainerError> {
-        let container_id = format!(
-            "miel-{}-{}",
-            service_config.name,
-            Uuid::new_v4().to_string()
-        );
+        let container_id = format!("miel-{}-{}", service_config.name, Uuid::new_v4());
 
         info!(
             "Creating container {} for service {}",
@@ -564,7 +560,7 @@ impl ContainerManager {
                 // FIXME: use a proper HTTP server
                 format!("/usr/bin/python3 -m http.server {p} --bind 127.0.0.1 --directory /www")
             }
-            _ => format!("/bin/sh /usr/bin/service"),
+            _ => "/bin/sh /usr/bin/service".to_string(),
         };
 
         debug!(
@@ -583,6 +579,7 @@ impl ContainerManager {
 
         std::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .read(true)
             .open(&pty_path)

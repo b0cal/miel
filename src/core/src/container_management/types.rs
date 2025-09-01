@@ -23,7 +23,7 @@ pub struct ContainerHandle {
     /// Logical service name that the container is running (e.g., "ssh").
     pub service_name: String,
     /// Fixed internal container port where the service listens.
-    pub port: u16,      // container internal service port
+    pub port: u16,
     /// Ephemeral host port mapped to the container's internal `port`.
     pub host_port: u16, // ephemeral host port mapped to the container
     /// Creation timestamp.
