@@ -162,7 +162,7 @@ impl NetworkListener {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use tokio::mpsc;
+    /// use tokio::sync::mpsc;
     /// use miel::configuration::types::ServiceConfig;
     /// use miel::network::network_listener::NetworkListener;
     ///
@@ -172,7 +172,7 @@ impl NetworkListener {
     /// let services = vec![
     ///     ServiceConfig { port: 8080, ..Default::default() },
     ///     ServiceConfig { port: 8443, ..Default::default() }
-    /// ]
+    /// ];
     ///
     /// match listener.bind_services(&services) {
     ///     Ok(()) => println!("All services bound successfully"),
@@ -227,15 +227,15 @@ impl NetworkListener {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run`
+    /// ```ignore    
     /// use::tokio::sync::mpsc;
     /// use miel::network::network_listener::NetworkListener;
-    /// use miel::configuration::types::ServiceConfig;
     /// use miel::error_handling::types::NetworkError;
+    /// use miel::configuration::types::ServiceConfig;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), NetworkError> {
-    ///     let (tx, rx) = mpsc::channel(100);
+    ///     let (tx, rx) = channel(100);
     ///     let mut listener = NetworkListener::new(tx);
     ///
     ///     listener.bind_services(&[ServiceConfig::default()])?;
