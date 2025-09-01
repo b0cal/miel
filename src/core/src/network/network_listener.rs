@@ -358,12 +358,12 @@ impl NetworkListener {
     }
 
     async fn handle_connection(
-        stream: TcpStream,
+        mut stream: TcpStream,
         client_addr: SocketAddr,
         session_tx: Sender<SessionRequest>,
         service_detector: ServiceDetector,
     ) -> Result<(), NetworkError> {
-        let service_name = match service_detector.identify_service(&stream).await {
+        let service_name = match service_detector.identify_service(&mut stream).await {
             Ok(name) => name,
             Err(e) => {
                 log::warn!(
