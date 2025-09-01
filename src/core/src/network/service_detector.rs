@@ -88,12 +88,4 @@ impl ServiceDetector {
             })
             .map(|service| service.service_name.clone())
     }
-
-    pub async fn detect_service(
-        &self,
-        stream: &TcpStream,
-        port: u16,
-    ) -> Result<String, NetworkError> {
-        Ok("Ok".to_string())
-    }
 }

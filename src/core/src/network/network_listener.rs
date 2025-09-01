@@ -199,25 +199,6 @@ impl NetworkListener {
         Ok(())
     }
 
-    // Not meant to stay, just so we can replicate the service for now
-    /*
-    async fn start_http_server() {
-        let listener = TcpListener::bind("0.0.0.0:8000").await.unwrap();
-
-        tokio::spawn(async move {
-            while let Ok((mut stream, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    let mut buffer = [0; 1024];
-                    let _ = stream.read(&mut buffer).await;
-
-                    let response = "HTTP/1.1 200 OK\r\n\r\nHello World!";
-                    let _ = stream.write_all(response.as_bytes()).await;
-                });
-            }
-        });
-    }
-    */
-
     /// Starts listening for incoming connections and processes them.
     ///
     /// This method begins the main listening loop, accepting incoming connections, performing
@@ -295,8 +276,6 @@ impl NetworkListener {
 
             log::info!("[+] Successfully bound to port {}", port);
 
-            // TODO: Implement Clone trait on service_detector and connection_filter
-            //
             // Clone components used for the async listening session
             let session_tx = self.session_tx.clone();
             let service_detector = self.service_detector.clone();
@@ -322,8 +301,6 @@ impl NetworkListener {
                 error!("[!] Listener task panicked: {:?}", e);
             }
         }
-        // For testing purposes we need to have the TcpStream address and port available, for now
-        // we use a simple HTTP server that responds '200 OK Hello World'
         Ok(())
     }
 
@@ -362,7 +339,6 @@ impl NetworkListener {
                 if let Err(e) = Self::handle_connection(
                     stream,
                     client_addr,
-                    port,
                     session_tx_clone,
                     service_detector_clone,
                 )
@@ -384,11 +360,10 @@ impl NetworkListener {
     async fn handle_connection(
         stream: TcpStream,
         client_addr: SocketAddr,
-        port: u16,
         session_tx: Sender<SessionRequest>,
         service_detector: ServiceDetector,
     ) -> Result<(), NetworkError> {
-        let service_name = match service_detector.detect_service(&stream, port).await {
+        let service_name = match service_detector.identify_service(&stream).await {
             Ok(name) => name,
             Err(e) => {
                 log::warn!(
@@ -423,24 +398,6 @@ impl NetworkListener {
 
         Ok(())
     }
-
-    /*
-    fn create_mock_stream() -> Mock {
-        Builder::new().read(b"hello").write(b"world").build()
-    }
-
-    fn create_session_request() -> SessionRequest<tokio_test::io::Mock> {
-        let mock_stream = Builder::new().read(b"hello").write(b"world").build();
-        let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 45)), 12345);
-
-        SessionRequest {
-            stream: mock_stream,
-            service_name: String::new(),
-            client_addr,
-            timestamp: Utc::now(),
-        }
-    }
-    */
 }
 
 #[cfg(test)]
@@ -488,63 +445,28 @@ mod tests {
         listening_task.abort();
     }
 
-    /*
-    #[tokio::test]
-    async fn test_start_listening_bind_error() {
-        let (session_tx, _session_rx) = mpsc::channel::<SessionRequest>(100);
-        let service_detector = ServiceDetector::new();
-        let connection_filter = ConnectionFilter::new();
-
-        let mut network_manager =
-            NetworkManager::new(session_tx, service_detector, connection_filter);
-
-        // Try to bind to a privileged port that should fail
-        network_manager.add_listener(80).unwrap();
-
-        let result = network_manager.start_listening().await;
-
-        // Should fail with bind error (unless running as root)
-        assert!(matches!(result, Err(NetworkError::BindError(_))));
-    }
-
-
-    #[tokio::test]
-    async fn test_start_listening_multiple_ports() {
-        let (session_tx, _session_rx) = mpsc::channel::<SessionRequest>(100);
-        let service_detector = ServiceDetector::new();
-        let connection_filter = ConnectionFilter::new();
-
-        let mut network_manager =
-            NetworkManager::new(session_tx, service_detector, connection_filter);
-
-        // Add multiple listeners
-        network_manager.add_listener(0).unwrap(); // Available port 1
-        network_manager.add_listener(0).unwrap(); // Available port 2
-
-        let listening_task = tokio::spawn(async move { network_manager.start_listening().await });
-
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        assert!(!listening_task.is_finished());
-
-        listening_task.abort();
-    }
-    */
-
     #[tokio::test]
     async fn test_listen_on_port_accepts_connections() {
         let (session_tx, mut session_rx) = mpsc::channel::<SessionRequest>(100);
-        let service_detector = ServiceDetector::new(&[ServiceConfig::default()]);
-        let connection_filter = ConnectionFilter::default();
 
-        // Create a test listener
-        let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
-        let server_addr = listener.local_addr().unwrap();
+        // Create a test listener to get the port
+        let test_listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let server_addr = test_listener.local_addr().unwrap();
         let port = server_addr.port();
+
+        let test_service = ServiceConfig {
+            port,
+            name: "test_service".to_string(),
+            ..ServiceConfig::default()
+        };
+
+        let service_detector = ServiceDetector::new(&[test_service]);
+        let connection_filter = ConnectionFilter::default();
 
         // Start listening in background
         let listen_task = tokio::spawn(async move {
             NetworkListener::listen_on_port(
-                listener,
+                test_listener,
                 session_tx,
                 service_detector,
                 connection_filter,
@@ -567,89 +489,6 @@ mod tests {
         listen_task.abort();
     }
 
-    /*
-    #[tokio::test]
-    async fn test_listen_on_port_filters_connections() {
-        let (session_tx, mut session_rx) = mpsc::channel::<SessionRequest>(100);
-        let service_detector = ServiceDetector::new();
-        let mut connection_filter = ConnectionFilter::new();
-
-        // Configure filter to reject connections (assuming you have such a method)
-        connection_filter.set_reject_all(true);
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let server_addr = listener.local_addr().unwrap();
-        let port = server_addr.port();
-
-        let listen_task = tokio::spawn(async move {
-            NetworkManager::listen_on_port(
-                listener,
-                session_tx,
-                service_detector,
-                connection_filter,
-                port,
-            )
-            .await;
-        });
-
-        tokio::time::sleep(Duration::from_millis(10)).await;
-
-        // Connect to the listener
-        let _client_stream = TcpStream::connect(server_addr).await.unwrap();
-
-        // Should NOT receive a session request due to filtering
-        let session_result = timeout(Duration::from_millis(200), session_rx.recv()).await;
-        assert!(session_result.is_err()); // Timeout expected
-
-        listen_task.abort();
-    }
-
-    #[tokio::test]
-    async fn test_listen_on_port_multiple_connections() {
-        let (session_tx, mut session_rx) = mpsc::channel::<SessionRequest>(100);
-        let service_detector = ServiceDetector::new();
-        let connection_filter = ConnectionFilter::new();
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let server_addr = listener.local_addr().unwrap();
-        let port = server_addr.port();
-
-        let listen_task = tokio::spawn(async move {
-            NetworkManager::listen_on_port(
-                listener,
-                session_tx,
-                service_detector,
-                connection_filter,
-                port,
-            )
-            .await;
-        });
-
-        tokio::time::sleep(Duration::from_millis(10)).await;
-
-        // Make multiple connections
-        let num_connections = 3;
-        for _ in 0..num_connections {
-            let _client_stream = TcpStream::connect(server_addr).await.unwrap();
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-
-        // Should receive multiple session requests
-        let mut received_count = 0;
-        while received_count < num_connections {
-            let session_result = timeout(Duration::from_millis(500), session_rx.recv()).await;
-            if session_result.is_ok() {
-                received_count += 1;
-            } else {
-                break;
-            }
-        }
-
-        assert_eq!(received_count, num_connections);
-        listen_task.abort();
-    }
-    */
-
     #[tokio::test]
     async fn test_handle_connection_success() {
         let (session_tx, mut session_rx) = mpsc::channel::<SessionRequest>(100);
@@ -666,7 +505,6 @@ mod tests {
         let result = NetworkListener::handle_connection(
             server_stream,
             client_addr,
-            8080,
             session_tx,
             service_detector,
         )
@@ -683,79 +521,4 @@ mod tests {
         assert_eq!(session_request.client_addr, client_addr);
         assert!(session_request.timestamp <= Utc::now());
     }
-
-    /*
-    #[tokio::test]
-    async fn test_handle_connection_service_detection_failure() {
-        let (session_tx, mut session_rx) = mpsc::channel::<SessionRequest>(100);
-        let mut service_detector = ServiceDetector::new();
-
-        // Configure service detector to fail (assuming you have such a method)
-        service_detector.set_always_fail(true);
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        let client_stream = TcpStream::connect(addr).await.unwrap();
-        let (server_stream, client_addr) = listener.accept().await.unwrap();
-
-        let result = NetworkManager::handle_connection(
-            server_stream,
-            client_addr,
-            8080,
-            session_tx,
-            service_detector,
-        )
-        .await;
-
-        // Should return error
-        assert!(result.is_err());
-
-        // No session request should be sent
-        let session_result = timeout(Duration::from_millis(100), session_rx.recv()).await;
-        assert!(session_result.is_err()); // Timeout expected
-    }
-
-    #[tokio::test]
-    async fn test_handle_connection_channel_closed() {
-        let (session_tx, session_rx) = mpsc::channel::<SessionRequest>(1);
-        let service_detector = ServiceDetector::new();
-
-        // Close the receiver to simulate channel failure
-        drop(session_rx);
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        let client_stream = TcpStream::connect(addr).await.unwrap();
-        let (server_stream, client_addr) = listener.accept().await.unwrap();
-
-        let result = NetworkManager::handle_connection(
-            server_stream,
-            client_addr,
-            8080,
-            session_tx,
-            service_detector,
-        )
-        .await;
-
-        // Should return channel error
-        assert!(matches!(result, Err(NetworkError::ChannelFailed)));
-    }
-    */
-    /*
-    #[tokio::test]
-    async fn test_start_listening_channel_communication() {
-        let (tx, mut rx) = mpsc::channel(100);
-
-        let mut listener = NetworkListener::new(tx);
-        listener.bind_services(&[ServiceConfig::default()]).unwrap();
-
-        listener.start_listening().await.unwrap();
-
-        let received = rx.recv().await.unwrap();
-
-        assert_eq!(received.service_name, "test_service".to_string());
-    }
-    */
 }
