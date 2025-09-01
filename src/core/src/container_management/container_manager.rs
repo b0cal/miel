@@ -68,7 +68,7 @@ impl ContainerManager {
         Ok(manager)
     }
 
-    /// Best-effort check for root privileges (effective UID == 0).
+    /// Best-effort check for root privileges (EUID == 0).
     fn is_running_as_root() -> bool {
         // Avoid extra deps; use a small shell to query id -u
         let is_root = if let Ok(output) = std::process::Command::new("id").arg("-u").output() {
@@ -125,7 +125,7 @@ impl ContainerManager {
         self.stats.total_created += 1;
         self.stats.active_count += 1;
 
-        // Store the container handle
+        // Store the handle
         self.active_containers
             .insert(container_id.clone(), handle.clone());
 
@@ -147,7 +147,6 @@ impl ContainerManager {
         info!("Starting cleanup for container: {}", handle.id);
 
         // Kill the process if it's still running
-        // TODO: consider waiting for graceful shutdown first
         if let Some(mut process) = handle.process_handle.take() {
             debug!("Terminating process for container: {}", handle.id);
             if let Err(e) = process.kill().await {
@@ -279,16 +278,15 @@ impl ContainerManager {
         self.setup_container_rootfs(&container_path, service_config)
             .await?;
 
-        // Prepare the systemd-nspawn command
+        // Prepare systemd-nspawn command
         let mut cmd = Command::new("systemd-nspawn");
         cmd.arg("--directory")
             .arg(&container_path)
             .arg("--ephemeral")
-            .arg("--bind-ro=/etc/resolv.conf")
-            // Bind essential host dirs so common binaries and their libs are available
-            // inside the minimal rootfs. Only bind paths that exist on the host.
-            ;
+            .arg("--bind-ro=/etc/resolv.conf");
 
+        // Bind essential host dirs so common binaries and their libs are available
+        // inside the minimal rootfs. Only bind paths that exist on the host.
         let mut bound_paths = 0;
         for p in [
             "/bin",
@@ -318,9 +316,7 @@ impl ContainerManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        // Allocate an ephemeral host port. We will listen directly on this port
-        // from inside the container (no nspawn port mapping), so the container
-        // must share the host network namespace.
+        // Allocate an ephemeral host port for the service
         let host_port = self.allocate_ephemeral_port(&service_config.protocol)?;
         debug!(
             "Allocated ephemeral port {} for container {}",
@@ -337,13 +333,13 @@ impl ContainerManager {
             container_id, service_command
         );
 
-        // Start the container process
+        // Start the process
         let mut process = cmd.spawn().map_err(|e| {
             error!("Failed to spawn container {}: {}", container_id, e);
             ContainerError::StartFailed(format!("Failed to spawn container: {}", e))
         })?;
 
-        // Capture stderr to help diagnose issues (e.g., missing binaries/options)
+        // Capture stderr
         if let Some(stderr) = process.stderr.take() {
             let mut reader = BufReader::new(stderr).lines();
             let cid = container_id.to_string();
@@ -355,9 +351,10 @@ impl ContainerManager {
             });
         }
 
-        // Create a PTY for stdio capture (placeholder implementation)
+        // Create a PTY for stdio capture (placeholder impl)
         let pty_master = self.create_pty_master(container_id).ok();
-        // Capture stdout for additional context
+
+        // Capture stdout
         if let Some(stdout) = process.stdout.take() {
             let mut reader = BufReader::new(stdout).lines();
             let cid = container_id.to_string();
@@ -377,7 +374,7 @@ impl ContainerManager {
             created_at: Utc::now(),
             process_handle: Some(process),
             pty_master,
-            tcp_socket: None, // Will be set when connection is established
+            tcp_socket: None, // Set when connection is established
         };
 
         debug!("Successfully created nspawn container: {}", container_id);
@@ -392,7 +389,7 @@ impl ContainerManager {
     ) -> Result<(), ContainerError> {
         debug!("Setting up container rootfs at: {}", container_path);
 
-        // Create basic directory structure
+        // Basic directory structure
         let dirs = [
             "bin",
             "usr/bin",
@@ -434,6 +431,7 @@ impl ContainerManager {
         }
 
         // Provide minimal system files for sshd compatibility
+        // Credentials are miel:miel
         let files = [
             ("etc/passwd", "root:x:0:0:root:/root:/bin/sh\nsshd:x:74:74:sshd privilege separation user:/var/run/sshd:/bin/false\nmiel:x:1000:1000:miel User:/home/miel:/bin/sh\n"),
             ("etc/group", "root:x:0:\nsshd:x:74:\nmiel:x:1000:\n"),
@@ -451,7 +449,7 @@ impl ContainerManager {
             }
         }
 
-        // Create a simple service script based on the configuration
+        // Create service script for the configuration
         debug!("Creating service files for: {}", service_config.name);
         let service_script = format!(
             "#!/bin/sh\necho 'Starting {} service on port {}'\nwhile true; do\n    echo 'Service {} is running'\n    sleep 30\ndone\n",
@@ -496,12 +494,9 @@ impl ContainerManager {
     /// Returns the command line to run for a given `service_config`.
     fn get_service_command(&self, service_config: &ServiceConfig, host_port: u16) -> String {
         // Return the service command based on the service configuration
-        // In a real implementation, this would be more sophisticated
         let command = match service_config.name.as_str() {
             "ssh" => {
                 let p = host_port;
-                // Generate host keys if missing and run OpenSSH sshd in foreground
-                // Enable password authentication for honeypot purposes
                 format!(
                     "/usr/bin/ssh-keygen -A >/dev/null 2>&1 || /bin/ssh-keygen -A >/dev/null 2>&1; /usr/sbin/sshd -D -e -f /dev/null -p {p} -o ListenAddress=127.0.0.1 -o UsePAM=no -o PasswordAuthentication=yes -o PermitRootLogin=no -o PidFile=/var/run/sshd/sshd.pid"
                 )
