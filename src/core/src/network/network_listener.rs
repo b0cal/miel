@@ -53,7 +53,7 @@
 
 use super::connection_filter::*;
 use super::service_detector::*;
-use super::session_request::*;
+use super::types::SessionRequest;
 use crate::configuration::types::ServiceConfig;
 use crate::error_handling::types::NetworkError;
 
