@@ -80,16 +80,17 @@ package "Core" {
 
 package "Network" {
   struct NetworkListener {
-    - listeners: HashMap<u16, TcpListener>
+    - listeners: HashMap<u16, TcpSocket>
     - session_tx: mpsc::Sender<SessionRequest>
     - service_detector: ServiceDetector
     - connection_filter: ConnectionFilter
     --
-    + new() -> Self
-    + bind_services(services: &[ServiceConfig]) -> Result<(), NetworkError>
-    + start_listening(session_tx: mpsc::Sender<SessionRequest>) -> Result<(), NetworkError>
+    + new(session_tx: mpsc::Sender<SessionRequest) -> Self
+    + bind_services(&mut self, services: &[ServiceConfig]) -> Result<(), NetworkError>
+    + start_listening(&mut self) -> Result<(), NetworkError>
     + shutdown() -> Result<(), NetworkError>
-    - handle_connection(stream: TcpStream, service: &str)
+    - listen_on_port(listener: tokio::TcpListener, session_tx: Sender<SessionRequest>, service_detector: ServiceDetector, connection_filter: ConnectionFilter, port: u16)
+    - handle_connection(stream: TcpStream, service: &str) -> Result<(), NetworkError>
   }
 
   struct ServiceDetector {
@@ -107,9 +108,10 @@ package "Network" {
     - protocol_filter: ProtocolFilter
     --
     + new(ip_filter: IpFilter, port_filter: PortFilter) -> Self
-    + should_accept_connection(addr: SocketAddr, service: &str) -> bool
-    + is_ip_allowed(ip: IpAddr) -> bool
-    + is_port_allowed(port: u16) -> bool
+    + default() -> Self
+    + should_accept_connection(&self, addr: &IpAddr, port: u16) -> bool
+    - is_ip_allowed(&self, ip: &IpAddr) -> bool
+    - is_port_allowed(&self, port: u16) -> bool
   }
 
   struct ProtocolFilter {
