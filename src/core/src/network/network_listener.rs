@@ -26,14 +26,16 @@
 //! use miel::configuration::types::ServiceConfig;
 //! use miel::network::network_listener::NetworkListener;
 //! use miel::error_handling::types::NetworkError;
+//! use std::net::SocketAddr;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), NetworkError> {
 //!     // Create a channel for session requests
 //!     let (tx, rx) = mpsc::channel(100);
 //!     
+//!     let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
 //!     // Initialize the network listener
-//!     let mut listener = NetworkListener::new(tx);
+//!     let mut listener = NetworkListener::new(tx, bind_addr);
 //!     
 //!     // Configure services to listen on
 //!     let services = vec![
@@ -85,7 +87,9 @@ use tokio::sync::mpsc::Sender;
 /// #[tokio::main]
 /// async fn main() {
 ///     let (tx, rx) = mpsc::channel(100);
-///     let mut listener = NetworkListener::new(tx);
+///
+///     let bind_addr = std::net::SocketAddr::from(([0, 0, 0, 0], 0));
+///     let mut listener = NetworkListener::new(tx, bind_addr);
 ///
 ///     // Configure and bind services
 ///     let services = vec![ServiceConfig::default()];
@@ -104,6 +108,9 @@ pub struct NetworkListener {
 
     /// Connection filtering component for security and access control
     connection_filter: ConnectionFilter,
+
+    /// Address to which the listeners are bound
+    bind_addr: SocketAddr,
 }
 
 impl NetworkListener {
@@ -122,11 +129,13 @@ impl NetworkListener {
     /// ```rust,no_run
     /// use tokio::sync::mpsc;
     /// use miel::network::network_listener::NetworkListener;
+    /// use std::net::SocketAddr;
     ///
     /// let (tx, rx) = mpsc::channel(100);
-    /// let listener = NetworkListener::new(tx);
+    /// let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
+    /// let listener = NetworkListener::new(tx, bind_addr);
     /// ```
-    pub fn new(session_tx: Sender<SessionRequest>) -> Self {
+    pub fn new(session_tx: Sender<SessionRequest>, bind_addr: SocketAddr) -> Self {
         Self {
             listeners: HashMap::new(),
             session_tx,
@@ -134,6 +143,7 @@ impl NetworkListener {
                 service_patterns: HashMap::new(),
             },
             connection_filter: ConnectionFilter::default(),
+            bind_addr,
         }
     }
 
@@ -167,7 +177,9 @@ impl NetworkListener {
     /// use miel::network::network_listener::NetworkListener;
     ///
     /// let (tx, rx) = mpsc::channel(100);
-    /// let mut listener = NetworkListener::new(tx);
+    ///
+    /// let bind_addr = std::net::SocketAddr::from(([0, 0, 0, 0], 0));
+    /// let mut listener = NetworkListener::new(tx, bind_addr);
     ///
     /// let services = vec![
     ///     ServiceConfig { port: 8080, ..Default::default() },
@@ -251,10 +263,9 @@ impl NetworkListener {
         // Bind all sockets and create listeners
         for (port, socket) in self.listeners.drain() {
             //TODO: Not sure of what should be the address to bind to
-            let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
             // Bind socket to the address
-            if let Err(e) = socket.bind(addr) {
+            if let Err(e) = socket.bind(self.bind_addr) {
                 error!("[!] Failed to bind to port {}: {:?}", port, e);
                 return Err(NetworkError::BindError(e));
             }
@@ -412,9 +423,10 @@ mod tests {
     fn test_bind_services_from_legit_file() {
         // Build channel
         let (tx, _) = mpsc::channel(100);
+        let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
 
         // Create new NetworkListener
-        let mut listener = NetworkListener::new(tx);
+        let mut listener = NetworkListener::new(tx, bind_addr);
 
         // Binding a server shouldn't return an error, if returns Err, panic! and test fails
         listener.bind_services(&[ServiceConfig::default()]).unwrap();
@@ -424,7 +436,9 @@ mod tests {
     async fn test_start_listening_success() {
         let (session_tx, _) = mpsc::channel::<SessionRequest>(100);
 
-        let mut network_listener = NetworkListener::new(session_tx);
+        let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
+
+        let mut network_listener = NetworkListener::new(session_tx, bind_addr);
 
         let service_config = ServiceConfig {
             port: 0,
