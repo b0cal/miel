@@ -51,6 +51,8 @@ pub enum ContainerError {
     StartFailed(String),
     IoError(std::io::Error),
     ProcessError(String),
+    ContainerNotFound(String),
+    ConnectionFailed(String),
 }
 
 impl std::fmt::Display for ContainerError {
@@ -61,6 +63,8 @@ impl std::fmt::Display for ContainerError {
             ContainerError::StartFailed(msg) => write!(f, "Container start failed: {}", msg),
             ContainerError::IoError(err) => write!(f, "IO error: {}", err),
             ContainerError::ProcessError(msg) => write!(f, "Process error: {}", msg),
+            ContainerError::ContainerNotFound(msg) => write!(f, "Container not found: {}", msg),
+            ContainerError::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
         }
     }
 }

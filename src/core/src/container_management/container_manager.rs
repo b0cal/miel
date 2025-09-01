@@ -5,6 +5,7 @@ use std::fs::File;
 use std::path::Path;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::net::TcpStream;
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -70,7 +71,6 @@ impl ContainerManager {
 
     /// Best-effort check for root privileges (EUID == 0).
     fn is_running_as_root() -> bool {
-        // Avoid extra deps; use a small shell to query id -u
         let is_root = if let Ok(output) = std::process::Command::new("id").arg("-u").output() {
             if output.status.success() {
                 if let Ok(s) = String::from_utf8(output.stdout) {
@@ -366,6 +366,15 @@ impl ContainerManager {
             });
         }
 
+        // Wait for the service to start up and establish a TCP connection
+        info!(
+            "Waiting for service to start and establishing TCP connection to container {}",
+            container_id
+        );
+        let tcp_socket = self
+            .establish_container_connection(host_port, container_id)
+            .await?;
+
         let handle = ContainerHandle {
             id: container_id.to_string(),
             service_name: service_config.name.clone(),
@@ -374,11 +383,59 @@ impl ContainerManager {
             created_at: Utc::now(),
             process_handle: Some(process),
             pty_master,
-            tcp_socket: None, // Set when connection is established
+            tcp_socket: Some(tcp_socket),
         };
 
-        debug!("Successfully created nspawn container: {}", container_id);
+        debug!(
+            "Successfully created nspawn container with TCP connection: {}",
+            container_id
+        );
         Ok(handle)
+    }
+
+    /// Establishes a TCP connection to the container service with retry logic.
+    ///
+    /// This method waits for the service inside the container to start up and
+    /// then establishes a TCP connection that can be used for traffic forwarding.
+    async fn establish_container_connection(
+        &self,
+        host_port: u16,
+        container_id: &str,
+    ) -> Result<TcpStream, ContainerError> {
+        let max_retries = 30;
+        let mut retries = 0;
+        let target_addr = format!("127.0.0.1:{}", host_port);
+
+        debug!(
+            "Attempting to connect to container service at {}",
+            target_addr
+        );
+
+        while retries < max_retries {
+            match TcpStream::connect(&target_addr).await {
+                Ok(socket) => {
+                    info!(
+                        "Successfully established TCP connection to container {} on {}",
+                        container_id, target_addr
+                    );
+                    return Ok(socket);
+                }
+                Err(e) => {
+                    retries += 1;
+                    let wait_time = std::cmp::min(500 + (retries * 200), 3000); // Progressive backoff, cap at 3s
+                    debug!(
+                        "Connection attempt {}/{} failed for container {}: {} - retrying in {}ms",
+                        retries, max_retries, container_id, e, wait_time
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_millis(wait_time)).await;
+                }
+            }
+        }
+
+        Err(ContainerError::ConnectionFailed(format!(
+            "Failed to establish TCP connection to container {} at {} after {} attempts",
+            container_id, target_addr, max_retries
+        )))
     }
 
     /// Sets up a minimal container rootfs with a dummy service script.
@@ -431,7 +488,7 @@ impl ContainerManager {
         }
 
         // Provide minimal system files for sshd compatibility
-        // Credentials are miel:miel
+        // Credentials: miel:miel
         let files = [
             ("etc/passwd", "root:x:0:0:root:/root:/bin/sh\nsshd:x:74:74:sshd privilege separation user:/var/run/sshd:/bin/false\nmiel:x:1000:1000:miel User:/home/miel:/bin/sh\n"),
             ("etc/group", "root:x:0:\nsshd:x:74:\nmiel:x:1000:\n"),
@@ -504,6 +561,7 @@ impl ContainerManager {
             "http" => {
                 let p = host_port;
                 // Use Python's built-in HTTP server
+                // FIXME: use a proper HTTP server
                 format!("/usr/bin/python3 -m http.server {p} --bind 127.0.0.1 --directory /www")
             }
             _ => format!("/bin/sh /usr/bin/service"),
