@@ -1,24 +1,11 @@
-use super::protocol_filter::ProtocolFilter;
 use crate::configuration::types::{IpFilter, PortFilter};
 
 use std::net::IpAddr;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ConnectionFilter {
     ip_filter: IpFilter,
     port_filter: PortFilter,
-    protocol_filter: ProtocolFilter, // What is the purpose of this field if it's not passed to
-                                     // new() ?
-}
-
-impl Default for ConnectionFilter {
-    fn default() -> Self {
-        Self {
-            ip_filter: IpFilter::default(),
-            port_filter: PortFilter::default(),
-            protocol_filter: ProtocolFilter::default(),
-        }
-    }
 }
 
 impl ConnectionFilter {
@@ -26,7 +13,6 @@ impl ConnectionFilter {
         Self {
             ip_filter,
             port_filter,
-            protocol_filter: ProtocolFilter::default(),
         }
     }
     pub fn should_accept_connection(&self, client_addr: &IpAddr, port: u16) -> bool {
