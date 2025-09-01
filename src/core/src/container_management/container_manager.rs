@@ -1,7 +1,9 @@
 use chrono::Utc;
 use std::collections::HashMap;
 use std::fs::File;
+use std::path::Path;
 use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -36,6 +38,14 @@ impl ContainerManager {
             return Err(ContainerError::RuntimeNotAvailable);
         }
 
+        // Require root privileges: unprivileged nspawn with a plain directory tree is not supported
+        // on many systems and will implicitly enable private networking, breaking host-port binding.
+        if !Self::is_running_as_root() {
+            return Err(ContainerError::StartFailed(
+                "systemd-nspawn requires root privileges for this setup. Please run the program with sudo.".to_string(),
+            ));
+        }
+
         Ok(ContainerManager {
             runtime: Runtime::SystemdNspawn,
             active_containers: HashMap::new(),
@@ -45,6 +55,19 @@ impl ContainerManager {
                 failed_count: 0,
             },
         })
+    }
+
+    /// Best-effort check for root privileges (effective UID == 0).
+    fn is_running_as_root() -> bool {
+        // Avoid extra deps; use a small shell to query id -u
+        if let Ok(output) = std::process::Command::new("id").arg("-u").output() {
+            if output.status.success() {
+                if let Ok(s) = String::from_utf8(output.stdout) {
+                    return s.trim() == "0";
+                }
+            }
+        }
+        false
     }
 
     /// Creates a new container for the given `service_config` and returns its handle.
@@ -185,40 +208,72 @@ impl ContainerManager {
         cmd.arg("--directory")
             .arg(&container_path)
             .arg("--ephemeral")
-            .arg("--private-network")
             .arg("--bind-ro=/etc/resolv.conf")
-            .arg(format!("--machine={}", container_id))
+            // Bind essential host dirs so common binaries and their libs are available
+            // inside the minimal rootfs. Only bind paths that exist on the host.
+            ;
+
+        for p in [
+            "/bin",
+            "/usr/bin",
+            "/sbin",
+            "/usr/sbin",
+            "/usr/libexec",
+            "/lib",
+            "/lib64",
+            "/usr/lib",
+            "/usr/lib64",
+        ]
+        .iter()
+        {
+            if Path::new(p).exists() {
+                cmd.arg(format!("--bind-ro={}", p));
+            }
+        }
+
+        cmd.arg(format!("--machine={}", container_id))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        // Allocate an ephemeral host port and add service-specific arguments
+        // Allocate an ephemeral host port. We will listen directly on this port
+        // from inside the container (no nspawn port mapping), so the container
+        // must share the host network namespace.
         let host_port = self.allocate_ephemeral_port(&service_config.protocol)?;
-        match service_config.protocol {
-            crate::configuration::types::Protocol::TCP => {
-                // Map ephemeral host port to container's fixed internal service port
-                cmd.arg(format!("--port={}:{}", host_port, service_config.port));
-            }
-            crate::configuration::types::Protocol::UDP => {
-                cmd.arg(format!(
-                    "--port={}:{}{}",
-                    host_port, service_config.port, "/udp"
-                ));
-            }
-        }
 
         // Add the service command to run
         cmd.arg("--").arg("/bin/sh").arg("-c");
-        let service_command = self.get_service_command(service_config);
+        let service_command = self.get_service_command(service_config, host_port);
         cmd.arg(service_command);
 
         // Start the container process
-        let process = cmd.spawn().map_err(|e| {
+        let mut process = cmd.spawn().map_err(|e| {
             ContainerError::StartFailed(format!("Failed to spawn container: {}", e))
         })?;
 
+        // Capture stderr to help diagnose issues (e.g., missing binaries/options)
+        if let Some(stderr) = process.stderr.take() {
+            let mut reader = BufReader::new(stderr).lines();
+            let cid = container_id.to_string();
+            tokio::spawn(async move {
+                while let Ok(Some(line)) = reader.next_line().await {
+                    eprintln!("[nspawn:{}][stderr] {}", cid, line);
+                }
+            });
+        }
+
         // Create a PTY for stdio capture (placeholder implementation)
         let pty_master = self.create_pty_master(container_id).ok();
+        // Capture stdout for additional context
+        if let Some(stdout) = process.stdout.take() {
+            let mut reader = BufReader::new(stdout).lines();
+            let cid = container_id.to_string();
+            tokio::spawn(async move {
+                while let Ok(Some(line)) = reader.next_line().await {
+                    eprintln!("[nspawn:{}][stdout] {}", cid, line);
+                }
+            });
+        }
 
         let handle = ContainerHandle {
             id: container_id.to_string(),
@@ -241,7 +296,28 @@ impl ContainerManager {
         service_config: &ServiceConfig,
     ) -> Result<(), ContainerError> {
         // Create basic directory structure
-        let dirs = ["bin", "usr/bin", "etc", "tmp", "var", "proc", "sys"];
+        let dirs = [
+            "bin",
+            "usr/bin",
+            "sbin",
+            "usr/sbin",
+            "usr/libexec",
+            "usr/libexec/openssh",
+            "etc",
+            "etc/ssh",
+            "var",
+            "var/run",
+            "var/run/sshd",
+            "tmp",
+            "proc",
+            "sys",
+            "www",
+            "root",
+            "home",
+            "home/miel",
+            "usr/share",
+            "usr/share/empty.sshd",
+        ];
         for dir in &dirs {
             let full_path = format!("{}/{}", container_path, dir);
             std::fs::create_dir_all(&full_path).map_err(|e| {
@@ -252,6 +328,26 @@ impl ContainerManager {
         // Copy essential binaries (simplified - in real implementation would use proper base image)
         if let Err(e) = std::fs::copy("/bin/sh", format!("{}/bin/sh", container_path)) {
             eprintln!("Warning: Failed to copy /bin/sh: {}", e);
+        }
+
+        // Provide minimal system files for sshd compatibility
+        let etc_passwd = "root:x:0:0:root:/root:/bin/sh\nsshd:x:74:74:sshd privilege separation user:/var/run/sshd:/bin/false\nmiel:x:1000:1000:miel User:/home/miel:/bin/sh\n";
+        let etc_group = "root:x:0:\nsshd:x:74:\nmiel:x:1000:\n";
+        let etc_shadow = "root:*:19000:0:99999:7:::\nsshd:*:19000:0:99999:7:::\nmiel:$6$JWGaRU6XKVQ3ONQJ$k/G2q0uMScsEKSjfMS6YteGEEGuOl2wdodXeU6QSQSsBXOC1wG0TPcmWvsa1elj7P4LCmKy9P1NcStmATA6h11:19000:0:99999:7:::\n";
+        if let Err(e) = std::fs::write(format!("{}/etc/passwd", container_path), etc_passwd) {
+            eprintln!("Warning: Failed to write /etc/passwd: {}", e);
+        }
+        if let Err(e) = std::fs::write(format!("{}/etc/group", container_path), etc_group) {
+            eprintln!("Warning: Failed to write /etc/group: {}", e);
+        }
+        if let Err(e) = std::fs::write(format!("{}/etc/shadow", container_path), etc_shadow) {
+            eprintln!("Warning: Failed to write /etc/shadow: {}", e);
+        }
+
+        // Provide a minimal index page for http demo
+        let index_html = "<html><body><h1>Miel demo</h1><p>It works.</p></body></html>\n";
+        if let Err(e) = std::fs::write(format!("{}/www/index.html", container_path), index_html) {
+            eprintln!("Warning: Failed to write /www/index.html: {}", e);
         }
 
         // Create a simple service script based on the configuration
@@ -291,14 +387,24 @@ impl ContainerManager {
     }
 
     /// Returns the command line to run for a given `service_config`.
-    fn get_service_command(&self, service_config: &ServiceConfig) -> String {
+    fn get_service_command(&self, service_config: &ServiceConfig, host_port: u16) -> String {
         // Return the service command based on the service configuration
         // In a real implementation, this would be more sophisticated
         match service_config.name.as_str() {
-            // FIXME: replace with actual services.
-            "ssh" => format!("nc -l -p {} -k", service_config.port),
-            "http" => format!("nc -l -p {} -k", service_config.port),
-            _ => format!("/usr/bin/service"),
+            "ssh" => {
+                let p = host_port;
+                // Generate host keys if missing and run OpenSSH sshd in foreground
+                // Enable password authentication for honeypot purposes
+                format!(
+                    "/usr/bin/ssh-keygen -A >/dev/null 2>&1 || /bin/ssh-keygen -A >/dev/null 2>&1; /usr/sbin/sshd -D -e -f /dev/null -p {p} -o ListenAddress=127.0.0.1 -o UsePAM=no -o PasswordAuthentication=yes -o PermitRootLogin=no -o PidFile=/var/run/sshd/sshd.pid"
+                )
+            }
+            "http" => {
+                let p = host_port;
+                // Use Python's built-in HTTP server
+                format!("/usr/bin/python3 -m http.server {p} --bind 127.0.0.1 --directory /www")
+            }
+            _ => format!("/bin/sh /usr/bin/service"),
         }
     }
 
