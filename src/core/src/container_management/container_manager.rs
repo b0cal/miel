@@ -1,4 +1,5 @@
 use chrono::Utc;
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
@@ -33,20 +34,24 @@ impl ContainerManager {
     ///
     /// Returns an error if the configured runtime is not available on the host.
     pub fn new() -> Result<Self, ContainerError> {
+        info!("Initializing ContainerManager");
+
         // Check if systemd-nspawn is available, otherwise fail
         if !Self::is_runtime_available() {
+            error!("systemd-nspawn runtime is not available on this system");
             return Err(ContainerError::RuntimeNotAvailable);
         }
 
         // Require root privileges: unprivileged nspawn with a plain directory tree is not supported
         // on many systems and will implicitly enable private networking, breaking host-port binding.
         if !Self::is_running_as_root() {
+            error!("Insufficient privileges: systemd-nspawn requires root access");
             return Err(ContainerError::StartFailed(
                 "systemd-nspawn requires root privileges for this setup. Please run the program with sudo.".to_string(),
             ));
         }
 
-        Ok(ContainerManager {
+        let manager = ContainerManager {
             runtime: Runtime::SystemdNspawn,
             active_containers: HashMap::new(),
             stats: ContainerStats {
@@ -54,20 +59,34 @@ impl ContainerManager {
                 total_created: 0,
                 failed_count: 0,
             },
-        })
+        };
+
+        info!(
+            "ContainerManager initialized successfully with runtime: {:?}",
+            manager.runtime
+        );
+        Ok(manager)
     }
 
     /// Best-effort check for root privileges (effective UID == 0).
     fn is_running_as_root() -> bool {
         // Avoid extra deps; use a small shell to query id -u
-        if let Ok(output) = std::process::Command::new("id").arg("-u").output() {
+        let is_root = if let Ok(output) = std::process::Command::new("id").arg("-u").output() {
             if output.status.success() {
                 if let Ok(s) = String::from_utf8(output.stdout) {
-                    return s.trim() == "0";
+                    s.trim() == "0"
+                } else {
+                    false
                 }
+            } else {
+                false
             }
-        }
-        false
+        } else {
+            false
+        };
+
+        debug!("Root privilege check result: {}", is_root);
+        is_root
     }
 
     /// Creates a new container for the given `service_config` and returns its handle.
@@ -88,9 +107,15 @@ impl ContainerManager {
             Uuid::new_v4().to_string()
         );
 
+        info!(
+            "Creating container {} for service {}",
+            container_id, service_config.name
+        );
+
         // Use the runtime to create the container
         let handle = match self.runtime {
             Runtime::SystemdNspawn => {
+                debug!("Using SystemdNspawn runtime for container creation");
                 self.create_nspawn_container(service_config, &container_id)
                     .await?
             }
@@ -104,6 +129,10 @@ impl ContainerManager {
         self.active_containers
             .insert(container_id.clone(), handle.clone());
 
+        info!(
+            "Successfully created and registered container: {}",
+            container_id
+        );
         Ok(handle)
     }
 
@@ -115,15 +144,22 @@ impl ContainerManager {
         &mut self,
         mut handle: ContainerHandle,
     ) -> Result<(), ContainerError> {
+        info!("Starting cleanup for container: {}", handle.id);
+
         // Kill the process if it's still running
         // TODO: consider waiting for graceful shutdown first
         if let Some(mut process) = handle.process_handle.take() {
+            debug!("Terminating process for container: {}", handle.id);
             if let Err(e) = process.kill().await {
-                eprintln!(
-                    "Warning: Failed to kill container process {}: {}",
-                    handle.id, e
+                warn!("Failed to kill container process {}: {}", handle.id, e);
+            } else {
+                debug!(
+                    "Successfully terminated process for container: {}",
+                    handle.id
                 );
             }
+        } else {
+            debug!("No process handle found for container: {}", handle.id);
         }
 
         // Remove from active containers
@@ -132,30 +168,44 @@ impl ContainerManager {
 
         // Clean up container directory
         let container_path = format!("/tmp/miel-containers/{}", handle.id);
+        debug!("Cleaning up container directory: {}", container_path);
         if let Err(e) = std::fs::remove_dir_all(&container_path) {
-            eprintln!(
-                "Warning: Failed to clean up container directory {}: {}",
+            warn!(
+                "Failed to clean up container directory {}: {}",
                 container_path, e
+            );
+        } else {
+            debug!(
+                "Successfully cleaned up container directory: {}",
+                container_path
             );
         }
 
+        info!("Completed cleanup for container: {}", handle.id);
         Ok(())
     }
 
     /// Cleans up all tracked containers, continuing on errors and counting failures.
     pub async fn cleanup_all_containers(&mut self) -> Result<(), ContainerError> {
+        let container_count = self.active_containers.len();
+        info!("Starting cleanup of {} active containers", container_count);
+
         let container_handles: Vec<ContainerHandle> =
             self.active_containers.values().cloned().collect();
 
         for handle in container_handles {
             if let Err(e) = self.cleanup_container(handle).await {
-                eprintln!("Failed to cleanup container: {}", e);
+                error!("Failed to cleanup container: {}", e);
                 self.stats.failed_count += 1;
             }
         }
 
         self.active_containers.clear();
         self.stats.active_count = 0;
+        info!(
+            "Completed cleanup of all containers (failures: {})",
+            self.stats.failed_count
+        );
         Ok(())
     }
 
@@ -165,26 +215,45 @@ impl ContainerManager {
         // Update active count to reflect current state
         let mut stats = self.stats.clone();
         stats.active_count = self.active_containers.len();
+        debug!(
+            "Retrieved container stats: active={}, total={}, failed={}",
+            stats.active_count, stats.total_created, stats.failed_count
+        );
         stats
     }
 
     /// Returns a reference to an active container by id, if present.
     pub fn get_container(&self, container_id: &str) -> Option<&ContainerHandle> {
-        self.active_containers.get(container_id)
+        let result = self.active_containers.get(container_id);
+        debug!(
+            "Container lookup for {}: {}",
+            container_id,
+            if result.is_some() {
+                "found"
+            } else {
+                "not found"
+            }
+        );
+        result
     }
 
     /// Lists the identifiers of all active containers.
     pub fn list_active_containers(&self) -> Vec<String> {
-        self.active_containers.keys().cloned().collect()
+        let ids = self.active_containers.keys().cloned().collect::<Vec<_>>();
+        debug!("Listed {} active containers", ids.len());
+        ids
     }
 
     /// Checks whether the selected container runtime is available on the system.
     fn is_runtime_available() -> bool {
-        std::process::Command::new("systemd-nspawn")
+        let available = std::process::Command::new("systemd-nspawn")
             .arg("--version")
             .output()
             .map(|output| output.status.success())
-            .unwrap_or(false)
+            .unwrap_or(false);
+
+        debug!("systemd-nspawn availability check: {}", available);
+        available
     }
 
     /// Creates a container using `systemd-nspawn` and returns its handle.
@@ -193,9 +262,16 @@ impl ContainerManager {
         service_config: &ServiceConfig,
         container_id: &str,
     ) -> Result<ContainerHandle, ContainerError> {
+        debug!("Starting nspawn container creation for: {}", container_id);
+
         // Create a basic container directory structure
         let container_path = format!("/tmp/miel-containers/{}", container_id);
+        debug!("Preparing container directory: {}", container_path);
         std::fs::create_dir_all(&container_path).map_err(|e| {
+            error!(
+                "Failed to create container directory {}: {}",
+                container_path, e
+            );
             ContainerError::CreationFailed(format!("Failed to create container directory: {}", e))
         })?;
 
@@ -213,6 +289,7 @@ impl ContainerManager {
             // inside the minimal rootfs. Only bind paths that exist on the host.
             ;
 
+        let mut bound_paths = 0;
         for p in [
             "/bin",
             "/usr/bin",
@@ -228,8 +305,13 @@ impl ContainerManager {
         {
             if Path::new(p).exists() {
                 cmd.arg(format!("--bind-ro={}", p));
+                bound_paths += 1;
             }
         }
+        debug!(
+            "Bound {} system paths for container {}",
+            bound_paths, container_id
+        );
 
         cmd.arg(format!("--machine={}", container_id))
             .stdin(Stdio::piped())
@@ -240,14 +322,24 @@ impl ContainerManager {
         // from inside the container (no nspawn port mapping), so the container
         // must share the host network namespace.
         let host_port = self.allocate_ephemeral_port(&service_config.protocol)?;
+        debug!(
+            "Allocated ephemeral port {} for container {}",
+            host_port, container_id
+        );
 
         // Add the service command to run
         cmd.arg("--").arg("/bin/sh").arg("-c");
         let service_command = self.get_service_command(service_config, host_port);
-        cmd.arg(service_command);
+        cmd.arg(&service_command);
+
+        debug!(
+            "Spawning nspawn process for container {} with command: {:?}",
+            container_id, service_command
+        );
 
         // Start the container process
         let mut process = cmd.spawn().map_err(|e| {
+            error!("Failed to spawn container {}: {}", container_id, e);
             ContainerError::StartFailed(format!("Failed to spawn container: {}", e))
         })?;
 
@@ -257,8 +349,9 @@ impl ContainerManager {
             let cid = container_id.to_string();
             tokio::spawn(async move {
                 while let Ok(Some(line)) = reader.next_line().await {
-                    eprintln!("[nspawn:{}][stderr] {}", cid, line);
+                    debug!("[nspawn:{}][stderr] {}", cid, line);
                 }
+                debug!("stderr monitoring ended for container: {}", cid);
             });
         }
 
@@ -270,8 +363,9 @@ impl ContainerManager {
             let cid = container_id.to_string();
             tokio::spawn(async move {
                 while let Ok(Some(line)) = reader.next_line().await {
-                    eprintln!("[nspawn:{}][stdout] {}", cid, line);
+                    debug!("[nspawn:{}][stdout] {}", cid, line);
                 }
+                debug!("stdout monitoring ended for container: {}", cid);
             });
         }
 
@@ -286,6 +380,7 @@ impl ContainerManager {
             tcp_socket: None, // Will be set when connection is established
         };
 
+        debug!("Successfully created nspawn container: {}", container_id);
         Ok(handle)
     }
 
@@ -295,6 +390,8 @@ impl ContainerManager {
         container_path: &str,
         service_config: &ServiceConfig,
     ) -> Result<(), ContainerError> {
+        debug!("Setting up container rootfs at: {}", container_path);
+
         // Create basic directory structure
         let dirs = [
             "bin",
@@ -318,39 +415,44 @@ impl ContainerManager {
             "usr/share",
             "usr/share/empty.sshd",
         ];
+
+        debug!("Creating {} directories in container", dirs.len());
         for dir in &dirs {
             let full_path = format!("{}/{}", container_path, dir);
             std::fs::create_dir_all(&full_path).map_err(|e| {
+                error!("Failed to create directory {}: {}", full_path, e);
                 ContainerError::CreationFailed(format!("Failed to create dir {}: {}", dir, e))
             })?;
         }
 
         // Copy essential binaries (simplified - in real implementation would use proper base image)
+        debug!("Copying essential binaries to container");
         if let Err(e) = std::fs::copy("/bin/sh", format!("{}/bin/sh", container_path)) {
-            eprintln!("Warning: Failed to copy /bin/sh: {}", e);
+            warn!("Failed to copy /bin/sh: {}", e);
+        } else {
+            debug!("Successfully copied /bin/sh");
         }
 
         // Provide minimal system files for sshd compatibility
-        let etc_passwd = "root:x:0:0:root:/root:/bin/sh\nsshd:x:74:74:sshd privilege separation user:/var/run/sshd:/bin/false\nmiel:x:1000:1000:miel User:/home/miel:/bin/sh\n";
-        let etc_group = "root:x:0:\nsshd:x:74:\nmiel:x:1000:\n";
-        let etc_shadow = "root:*:19000:0:99999:7:::\nsshd:*:19000:0:99999:7:::\nmiel:$6$JWGaRU6XKVQ3ONQJ$k/G2q0uMScsEKSjfMS6YteGEEGuOl2wdodXeU6QSQSsBXOC1wG0TPcmWvsa1elj7P4LCmKy9P1NcStmATA6h11:19000:0:99999:7:::\n";
-        if let Err(e) = std::fs::write(format!("{}/etc/passwd", container_path), etc_passwd) {
-            eprintln!("Warning: Failed to write /etc/passwd: {}", e);
-        }
-        if let Err(e) = std::fs::write(format!("{}/etc/group", container_path), etc_group) {
-            eprintln!("Warning: Failed to write /etc/group: {}", e);
-        }
-        if let Err(e) = std::fs::write(format!("{}/etc/shadow", container_path), etc_shadow) {
-            eprintln!("Warning: Failed to write /etc/shadow: {}", e);
-        }
+        let files = [
+            ("etc/passwd", "root:x:0:0:root:/root:/bin/sh\nsshd:x:74:74:sshd privilege separation user:/var/run/sshd:/bin/false\nmiel:x:1000:1000:miel User:/home/miel:/bin/sh\n"),
+            ("etc/group", "root:x:0:\nsshd:x:74:\nmiel:x:1000:\n"),
+            ("etc/shadow", "root:*:19000:0:99999:7:::\nsshd:*:19000:0:99999:7:::\nmiel:$6$JWGaRU6XKVQ3ONQJ$k/G2q0uMScsEKSjfMS6YteGEEGuOl2wdodXeU6QSQSsBXOC1wG0TPcmWvsa1elj7P4LCmKy9P1NcStmATA6h11:19000:0:99999:7:::\n"),
+            ("www/index.html", "<html><body><h1>Miel demo</h1><p>It works.</p></body></html>\n"),
+        ];
 
-        // Provide a minimal index page for http demo
-        let index_html = "<html><body><h1>Miel demo</h1><p>It works.</p></body></html>\n";
-        if let Err(e) = std::fs::write(format!("{}/www/index.html", container_path), index_html) {
-            eprintln!("Warning: Failed to write /www/index.html: {}", e);
+        debug!("Creating {} system files", files.len());
+        for (path, content) in &files {
+            let full_path = format!("{}/{}", container_path, path);
+            if let Err(e) = std::fs::write(&full_path, content) {
+                warn!("Failed to write {}: {}", path, e);
+            } else {
+                debug!("Successfully created system file: {}", path);
+            }
         }
 
         // Create a simple service script based on the configuration
+        debug!("Creating service files for: {}", service_config.name);
         let service_script = format!(
             "#!/bin/sh\necho 'Starting {} service on port {}'\nwhile true; do\n    echo 'Service {} is running'\n    sleep 30\ndone\n",
             service_config.name, service_config.port, service_config.name
@@ -361,6 +463,7 @@ impl ContainerManager {
             service_script,
         )
         .map_err(|e| {
+            error!("Failed to create service script: {}", e);
             ContainerError::CreationFailed(format!("Failed to create service script: {}", e))
         })?;
 
@@ -368,14 +471,17 @@ impl ContainerManager {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            debug!("Setting executable permissions for service script");
             let mut perms = std::fs::metadata(format!("{}/usr/bin/service", container_path))
                 .map_err(|e| {
+                    error!("Failed to get script metadata: {}", e);
                     ContainerError::CreationFailed(format!("Failed to get script metadata: {}", e))
                 })?
                 .permissions();
             perms.set_mode(0o755);
             std::fs::set_permissions(format!("{}/usr/bin/service", container_path), perms)
                 .map_err(|e| {
+                    error!("Failed to set script permissions: {}", e);
                     ContainerError::CreationFailed(format!(
                         "Failed to set script permissions: {}",
                         e
@@ -383,6 +489,7 @@ impl ContainerManager {
                 })?;
         }
 
+        debug!("Successfully set up container rootfs");
         Ok(())
     }
 
@@ -390,7 +497,7 @@ impl ContainerManager {
     fn get_service_command(&self, service_config: &ServiceConfig, host_port: u16) -> String {
         // Return the service command based on the service configuration
         // In a real implementation, this would be more sophisticated
-        match service_config.name.as_str() {
+        let command = match service_config.name.as_str() {
             "ssh" => {
                 let p = host_port;
                 // Generate host keys if missing and run OpenSSH sshd in foreground
@@ -405,7 +512,13 @@ impl ContainerManager {
                 format!("/usr/bin/python3 -m http.server {p} --bind 127.0.0.1 --directory /www")
             }
             _ => format!("/bin/sh /usr/bin/service"),
-        }
+        };
+
+        debug!(
+            "Generated service command for {}: {}",
+            service_config.name, command
+        );
+        command
     }
 
     /// Creates a PTY master used to capture stdio. Placeholder implementation.
@@ -413,13 +526,17 @@ impl ContainerManager {
         // TODO: Implement actual PTY creation logic
         // For now, create a temporary file as placeholder
         let pty_path = format!("/tmp/miel-pty-{}", container_id);
+        debug!("Creating PTY master at: {}", pty_path);
 
         std::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .read(true)
             .open(&pty_path)
-            .map_err(|e| ContainerError::CreationFailed(format!("Failed to create PTY: {}", e)))
+            .map_err(|e| {
+                error!("Failed to create PTY {}: {}", pty_path, e);
+                ContainerError::CreationFailed(format!("Failed to create PTY: {}", e))
+            })
     }
 
     /// Allocates an ephemeral host port on 127.0.0.1 for the given protocol.
@@ -427,10 +544,11 @@ impl ContainerManager {
         &self,
         protocol: &crate::configuration::types::Protocol,
     ) -> Result<u16, ContainerError> {
-        match protocol {
+        let port = match protocol {
             crate::configuration::types::Protocol::TCP => {
                 let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
                     .map_err(|e| {
+                        error!("Failed to allocate ephemeral TCP port: {}", e);
                         ContainerError::CreationFailed(format!(
                             "Failed to allocate ephemeral TCP port: {}",
                             e
@@ -439,6 +557,7 @@ impl ContainerManager {
                 let port = listener
                     .local_addr()
                     .map_err(|e| {
+                        error!("Failed to read local addr for ephemeral TCP port: {}", e);
                         ContainerError::CreationFailed(format!(
                             "Failed to read local addr for ephemeral TCP port: {}",
                             e
@@ -447,11 +566,13 @@ impl ContainerManager {
                     .port();
                 // Close the socket to free the port for nspawn to bind
                 drop(listener);
-                Ok(port)
+                debug!("Allocated TCP port: {}", port);
+                port
             }
             crate::configuration::types::Protocol::UDP => {
                 let socket = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
                     .map_err(|e| {
+                        error!("Failed to allocate ephemeral UDP port: {}", e);
                         ContainerError::CreationFailed(format!(
                             "Failed to allocate ephemeral UDP port: {}",
                             e
@@ -460,6 +581,7 @@ impl ContainerManager {
                 let port = socket
                     .local_addr()
                     .map_err(|e| {
+                        error!("Failed to read local addr for ephemeral UDP port: {}", e);
                         ContainerError::CreationFailed(format!(
                             "Failed to read local addr for ephemeral UDP port: {}",
                             e
@@ -468,9 +590,13 @@ impl ContainerManager {
                     .port();
                 // Close the socket to free the port for nspawn to bind
                 drop(socket);
-                Ok(port)
+                debug!("Allocated UDP port: {}", port);
+                port
             }
-        }
+        };
+
+        debug!("Allocated ephemeral {:?} port: {}", protocol, port);
+        Ok(port)
     }
 }
 
@@ -478,10 +604,16 @@ impl Drop for ContainerManager {
     fn drop(&mut self) {
         // Attempt to cleanup all containers when the manager is dropped
         if !self.active_containers.is_empty() {
-            eprintln!(
-                "Warning: ContainerManager dropped with {} active containers",
+            warn!(
+                "ContainerManager dropped with {} active containers - this may indicate a resource leak",
                 self.active_containers.len()
             );
+
+            // Log the IDs of remaining containers for debugging
+            let remaining_ids: Vec<_> = self.active_containers.keys().collect();
+            warn!("Remaining container IDs: {:?}", remaining_ids);
+        } else {
+            debug!("ContainerManager dropped cleanly with no active containers");
         }
     }
 }
