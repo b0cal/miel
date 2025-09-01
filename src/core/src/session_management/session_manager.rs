@@ -2,21 +2,17 @@ use crate::active_session::ActiveSession;
 use crate::container_management::container_manager::ContainerManager;
 use crate::data_capture::stream_recorder::StreamRecorder;
 use crate::error_handling::types::SessionError;
-use crate::network::session_request::SessionRequest;
+use crate::network::types::SessionRequest;
 use crate::session::Session;
 use crate::SessionStatus;
 use chrono::Utc;
 use log::{debug, error, info};
-use serde::de::Unexpected::Option;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{copy_bidirectional, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use uuid::Uuid;
-
-use crate::container_management::container_handle::ContainerHandle;
-use tokio::io;
 
 /// The structure related to session management
 ///

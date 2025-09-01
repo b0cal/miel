@@ -1,7 +1,9 @@
 use crate::SessionStatus;
 use chrono::{DateTime, Utc};
 use std::net::SocketAddr;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
+
 
 pub struct Session {
     // Fields for the Session struct
@@ -14,3 +16,5 @@ pub struct Session {
     pub bytes_transferred: u64,
     pub status: SessionStatus,
 }
+
+
