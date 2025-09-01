@@ -34,7 +34,7 @@ pub struct Config {
     ///
     /// This field contains the configuration for all the services needing to be exposed through
     /// containers
-    /// It is not exposed as a command-line argument     
+    /// It is not exposed as a command-line argument
     ///
     /// Currently uses `#[arg(skip)]` to exclude from command-line parsing
     #[arg(skip)]
