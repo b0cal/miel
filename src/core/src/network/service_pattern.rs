@@ -1,4 +1,5 @@
 use crate::configuration::types::Protocol;
+#[derive(Clone)]
 pub struct ServicePattern {
     service_name: String,
     port: u16,
