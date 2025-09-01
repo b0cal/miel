@@ -4,6 +4,7 @@ use crate::error_handling::types::NetworkError;
 use log::{error, info};
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 
 #[derive(Clone)]
@@ -33,7 +34,7 @@ impl ServiceDetector {
         Self { service_patterns }
     }
 
-    pub async fn identify_service(&self, stream: &TcpStream) -> Result<String, NetworkError> {
+    pub async fn identify_service(&self, stream: &mut TcpStream) -> Result<String, NetworkError> {
         let local_addr: SocketAddr = stream.local_addr().map_err(|e| {
             error!("Failed to get local_addr: {}", e);
             NetworkError::ServiceDetectionFailed
@@ -50,7 +51,7 @@ impl ServiceDetector {
         );
 
         let mut buf = [0u8; 1024];
-        let n = stream.try_read(&mut buf).map_err(|e| {
+        let n = stream.read(&mut buf).await.map_err(|e| {
             error!("failed to read from stream: {}", e);
             NetworkError::ServiceDetectionFailed
         })?;
