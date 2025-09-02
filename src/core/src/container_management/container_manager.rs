@@ -8,6 +8,14 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::process::Command;
 use uuid::Uuid;
+=======
+use super::types::ContainerStats;
+use crate::configuration::types::ServiceConfig;
+use crate::container_management::container_handle::ContainerHandle;
+use crate::error_handling::types::ContainerError;
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+>>>>>>> 4906ca2 (fix: cleanup_expired_sessions, shutdown_all_sessions and create_session)
 
 use crate::configuration::types::ServiceConfig;
 use crate::container_management::types::{ContainerHandle, ContainerStats, Runtime};
@@ -25,6 +33,7 @@ use crate::error_handling::types::ContainerError;
 ///   internal service port.
 /// - This is a minimal, best-effort implementation not meant for production isolation.
 pub struct ContainerManager {
+<<<<<<< HEAD
 <<<<<<< HEAD
     runtime: Runtime,
     active_containers: HashMap<String, ContainerHandle>,

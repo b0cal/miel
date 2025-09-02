@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use std::net::SocketAddr;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct Session {
     // Fields for the Session struct
     pub id: Uuid,

@@ -1,4 +1,5 @@
 use crate::active_session::ActiveSession;
+use crate::configuration::types::ServiceConfig;
 use crate::container_management::container_manager::ContainerManager;
 use crate::data_capture::stream_recorder::StreamRecorder;
 use crate::error_handling::types::SessionError;
@@ -56,8 +57,9 @@ impl SessionManager {
     pub async fn handle_session(
         &mut self,
         mut request: SessionRequest,
+        service_config: &ServiceConfig,
     ) -> Result<(), SessionError> {
-        let session = match self.create_session(&request) {
+        let session = match self.create_session(&request, service_config) {
             Ok(s) => s,
             Err(_) => return Err(SessionError::CreationFailed),
         };
@@ -72,7 +74,7 @@ impl SessionManager {
             None => return Err(SessionError::CreationFailed),
         };
 
-        let tcp_stream = match container_handle.tcp_stream.as_mut() {
+        let tcp_stream = match container_handle.tcp_socket.as_mut() {
             Some(s) => s, // <-- `s` is now `&mut TcpStream`
             None => {
                 error!("No TCP stream available for container");
@@ -87,12 +89,16 @@ impl SessionManager {
     }
 
     pub fn cleanup_expired_sessions(&mut self) {
-        self.active_sessions.retain(|id, active_session| {
+        self.active_sessions.retain(|_id, active_session| {
             if let Some(end_time) = active_session.session.end_time {
                 let elapsed = Utc::now() - end_time;
                 if elapsed.num_seconds() >= self.session_timeout.as_secs() as i64 {
                     active_session.session.status = SessionStatus::Completed;
-                    self.container_manager.cleanup_container(&active_session.container_handle);
+                    if let Some(container_handle) = active_session.container_handle.take() {
+                        if let Err(e) = self.container_manager.cleanup_container(container_handle) {
+                            error!("failed to clean up container: {:?}", e);
+                        }
+                    }
                     return false;
                 }
             }
@@ -107,19 +113,23 @@ impl SessionManager {
     pub fn shutdown_all_sessions(&mut self) -> Result<(), SessionError> {
         for active_session in self.active_sessions.values_mut() {
             active_session.session.status = SessionStatus::Completed;
-            match self
-                .container_manager
-                .cleanup_container(&active_session.container_handle)
-            {
-                Ok(_) => Ok(()),
-                Err(e) => Err(SessionError::ContainerError(e)),
+
+            if let Some(container_handle) = active_session.container_handle.take() {
+                // Pass ownership to cleanup_container
+                self.container_manager
+                    .cleanup_container(container_handle)
+                    .map_err(SessionError::ContainerError)?;
             }
         }
         Ok(())
     }
 
-    fn create_session(&mut self, request: &SessionRequest) -> Result<Session, SessionError> {
-        let new_container_handle = match self.container_manager.create_container(&request) {
+    fn create_session(
+        &mut self,
+        request: &SessionRequest,
+        service_config: &ServiceConfig,
+    ) -> Result<Session, SessionError> {
+        let new_container_handle = match self.container_manager.create_container(service_config) {
             Ok(container_handle) => container_handle,
             Err(e) => return Err(SessionError::ContainerError(e)),
         };
@@ -137,22 +147,23 @@ impl SessionManager {
 
         let session_id = new_session.id;
         let new_active_session = ActiveSession {
-            session: new_session,mut request: SessionRequest
+            session: new_session,
             container_handle: Some(new_container_handle),
-            stream_recorder: StreamRecorder::new(session_id, &self.storage),
+            stream_recorder: StreamRecorder::new(session_id, self.storage.clone()),
             _cleanup_handle: tokio::spawn(async {
                 //TODO: make this, think about the best way to cleanup this mess
                 todo!()
             }),
         };
-        let _ = match self.active_sessions.insert(session_id, new_active_session) {
-            Some(_) => Ok(self.active_sessions.get(&session_id)),
-            None => Err(SessionError::CreationFailed),
-        };
-        Ok(match self.active_sessions.get(&session_id) {
-            Some(&active_session) => active_session.session,
-            None => return Err(SessionError::CreationFailed),
-        })
+
+        self.active_sessions.insert(session_id, new_active_session);
+
+        let active_session = self
+            .active_sessions
+            .get(&session_id)
+            .ok_or(SessionError::CreationFailed)?;
+
+        Ok(active_session.session.clone())
     }
 
     async fn setup_data_proxy(
