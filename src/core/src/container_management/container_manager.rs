@@ -281,6 +281,35 @@ impl ContainerManager {
             .arg("--ephemeral")
             .arg("--bind-ro=/etc/resolv.conf");
 
+        // Create and bind the log directory so containers can write to it
+        let log_dir = "/tmp/miel-logs";
+        std::fs::create_dir_all(log_dir).map_err(|e| {
+            error!("Failed to create log directory {}: {}", log_dir, e);
+            ContainerError::CreationFailed(format!("Failed to create log directory: {}", e))
+        })?;
+
+        // Set permissions on the log directory to be writable by all users
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(log_dir)
+                .map_err(|e| {
+                    error!("Failed to get log directory metadata: {}", e);
+                    ContainerError::CreationFailed(format!("Failed to get log directory metadata: {}", e))
+                })?
+                .permissions();
+            perms.set_mode(0o777); // rwxrwxrwx - allow all users to write
+            std::fs::set_permissions(log_dir, perms)
+                .map_err(|e| {
+                    error!("Failed to set log directory permissions: {}", e);
+                    ContainerError::CreationFailed(format!("Failed to set log directory permissions: {}", e))
+                })?;
+        }
+
+        // Bind the log directory so it's accessible from within the container
+        cmd.arg(format!("--bind={}", log_dir));
+        debug!("Bound log directory {} to container {}", log_dir, container_id);
+
         // Bind essential host dirs so common binaries and their libs are available
         // inside the minimal rootfs. Only bind paths that exist on the host.
         let mut bound_paths = 0;
@@ -321,7 +350,7 @@ impl ContainerManager {
 
         // Add the service command to run
         cmd.arg("--").arg("/bin/sh").arg("-c");
-        let service_command = self.get_service_command(service_config, host_port);
+        let service_command = self.get_service_command(service_config, host_port, container_id);
         cmd.arg(&service_command);
 
         debug!(
@@ -347,16 +376,24 @@ impl ContainerManager {
             });
         }
 
-        // Create a PTY for stdio capture (placeholder impl)
+        // Create a PTY for stdio capture - now creates unified activity log
         let pty_master = self.create_pty_master(container_id).ok();
 
-        // Capture stdout
+        // Capture stdout and redirect to unified log file
         if let Some(stdout) = process.stdout.take() {
+            let log_path = format!("/tmp/miel-logs/container-{}-activity.log", container_id);
             let mut reader = BufReader::new(stdout).lines();
             let cid = container_id.to_string();
             tokio::spawn(async move {
                 while let Ok(Some(line)) = reader.next_line().await {
                     debug!("[nspawn:{}][stdout] {}", cid, line);
+                    // Also write to the unified log file
+                    if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&log_path) {
+                        use std::io::Write;
+                        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+                        let _ = writeln!(file, "[{}] [CONTAINER] {}", timestamp, line);
+                        let _ = file.flush();
+                    }
                 }
                 debug!("stdout monitoring ended for container: {}", cid);
             });
@@ -446,6 +483,8 @@ impl ContainerManager {
         let dirs = [
             "bin",
             "usr/bin",
+            "usr/local",
+            "usr/local/bin",
             "sbin",
             "usr/sbin",
             "usr/libexec",
@@ -533,10 +572,7 @@ impl ContainerManager {
             std::fs::set_permissions(format!("{}/usr/bin/service", container_path), perms)
                 .map_err(|e| {
                     error!("Failed to set script permissions: {}", e);
-                    ContainerError::CreationFailed(format!(
-                        "Failed to set script permissions: {}",
-                        e
-                    ))
+                    ContainerError::CreationFailed(format!("Failed to set script permissions: {}", e))
                 })?;
         }
 
@@ -545,48 +581,329 @@ impl ContainerManager {
     }
 
     /// Returns the command line to run for a given `service_config`.
-    fn get_service_command(&self, service_config: &ServiceConfig, host_port: u16) -> String {
-        // Return the service command based on the service configuration
+    ///
+    /// For SSH services, this includes comprehensive logging configuration to capture
+    /// all session activity to the unified log file.
+    fn get_service_command(&self, service_config: &ServiceConfig, host_port: u16, container_id: &str) -> String {
+        // Get the log file path for this container (inside the container, the bind mount makes it accessible)
+        let log_path = format!("/tmp/miel-logs/container-{}-activity.log", container_id);
+
         let command = match service_config.name.as_str() {
             "ssh" => {
                 let p = host_port;
+                // Enhanced SSH command with comprehensive logging for honeypot purposes
                 format!(
-                    "/usr/bin/ssh-keygen -A >/dev/null 2>&1 || /bin/ssh-keygen -A >/dev/null 2>&1; /usr/sbin/sshd -D -e -f /dev/null -p {p} -o ListenAddress=127.0.0.1 -o UsePAM=no -o PasswordAuthentication=yes -o PermitRootLogin=no -o PidFile=/var/run/sshd/sshd.pid"
+                    r#"
+                    # Create SSH host keys
+                    /usr/bin/ssh-keygen -A >/dev/null 2>&1 || /bin/ssh-keygen -A >/dev/null 2>&1;
+
+                    # Create a custom sshd_config for enhanced logging
+                    cat > /etc/ssh/sshd_config << 'EOF'
+Port {p}
+ListenAddress 127.0.0.1
+Protocol 2
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+UsePrivilegeSeparation no
+KeyRegenerationInterval 3600
+ServerKeyBits 1024
+SyslogFacility AUTH
+LogLevel VERBOSE
+LoginGraceTime 600
+PermitRootLogin no
+StrictModes yes
+RSAAuthentication yes
+PubkeyAuthentication yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM no
+X11Forwarding no
+PrintMotd no
+PrintLastLog yes
+TCPKeepAlive yes
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/libexec/openssh/sftp-server
+UseDNS no
+PidFile /var/run/sshd/sshd.pid
+EOF
+
+                    # Create a comprehensive logging shell for honeypot purposes
+                    cat > /usr/local/bin/logged_shell << 'EOF'
+#!/bin/sh
+# Comprehensive honeypot shell logger - logs EVERYTHING including outputs
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S UTC')
+echo "[$TIMESTAMP] SSH session started for user: $USER (PID: $$)" >> {log_path}
+echo "[$TIMESTAMP] [SSH-SESSION] Interactive shell session started" >> {log_path}
+
+# Override PATH to intercept ALL command executions
+export PATH="/tmp:$PATH"
+
+# Create wrapper scripts for common binaries to log commands AND their outputs
+for cmd in ls cat pwd whoami id ps top netstat ss w who uname find grep awk sed tail head more less vi nano wget curl chmod chown mkdir rmdir rm cp mv ln tar gzip gunzip file which env printenv history mount df du free uptime lscpu lsblk ifconfig ip route iptables nmap nc telnet ping traceroute dig nslookup; do
+    if [ -x "/bin/$cmd" ] || [ -x "/usr/bin/$cmd" ] || [ -x "/sbin/$cmd" ] || [ -x "/usr/sbin/$cmd" ]; then
+        cat > "/tmp/$cmd" << CMD_EOF
+#!/bin/sh
+TIMESTAMP=\$(date '+%Y-%m-%d %H:%M:%S UTC')
+echo "[\$TIMESTAMP] [SSH-CMD] $cmd \$*" >> {log_path}
+
+# Create temporary files for capturing output
+OUTPUT_FILE="/tmp/cmd_output_\$\$"
+ERROR_FILE="/tmp/cmd_error_\$\$"
+
+# Find the real binary and execute it, capturing output
+if [ -x "/bin/$cmd" ]; then
+    "/bin/$cmd" "\$@" > "\$OUTPUT_FILE" 2> "\$ERROR_FILE"
+elif [ -x "/usr/bin/$cmd" ]; then
+    "/usr/bin/$cmd" "\$@" > "\$OUTPUT_FILE" 2> "\$ERROR_FILE"
+elif [ -x "/sbin/$cmd" ]; then
+    "/sbin/$cmd" "\$@" > "\$OUTPUT_FILE" 2> "\$ERROR_FILE"
+elif [ -x "/usr/sbin/$cmd" ]; then
+    "/usr/sbin/$cmd" "\$@" > "\$OUTPUT_FILE" 2> "\$ERROR_FILE"
+else
+    echo "$cmd: command not found" > "\$ERROR_FILE"
+fi
+
+EXIT_CODE=\$?
+TIMESTAMP=\$(date '+%Y-%m-%d %H:%M:%S UTC')
+
+# Log the output if there is any
+if [ -s "\$OUTPUT_FILE" ]; then
+    echo "[\$TIMESTAMP] [SSH-OUTPUT] $cmd stdout:" >> {log_path}
+    while IFS= read -r line; do
+        echo "[\$TIMESTAMP] [SSH-OUTPUT] \$line" >> {log_path}
+    done < "\$OUTPUT_FILE"
+fi
+
+# Log any errors
+if [ -s "\$ERROR_FILE" ]; then
+    echo "[\$TIMESTAMP] [SSH-ERROR] $cmd stderr:" >> {log_path}
+    while IFS= read -r line; do
+        echo "[\$TIMESTAMP] [SSH-ERROR] \$line" >> {log_path}
+    done < "\$ERROR_FILE"
+fi
+
+# Log the exit code
+echo "[\$TIMESTAMP] [SSH-EXIT] $cmd exited with code: \$EXIT_CODE" >> {log_path}
+
+# Display output to user using REAL binaries to avoid recursion
+if [ -s "\$OUTPUT_FILE" ]; then
+    if [ -x "/bin/cat" ]; then
+        "/bin/cat" "\$OUTPUT_FILE"
+    elif [ -x "/usr/bin/cat" ]; then
+        "/usr/bin/cat" "\$OUTPUT_FILE"
+    fi
+fi
+
+if [ -s "\$ERROR_FILE" ]; then
+    if [ -x "/bin/cat" ]; then
+        "/bin/cat" "\$ERROR_FILE" >&2
+    elif [ -x "/usr/bin/cat" ]; then
+        "/usr/bin/cat" "\$ERROR_FILE" >&2
+    fi
+fi
+
+# Clean up temporary files using real rm to avoid recursion
+if [ -x "/bin/rm" ]; then
+    "/bin/rm" -f "\$OUTPUT_FILE" "\$ERROR_FILE" 2>/dev/null
+elif [ -x "/usr/bin/rm" ]; then
+    "/usr/bin/rm" -f "\$OUTPUT_FILE" "\$ERROR_FILE" 2>/dev/null
+fi
+
+exit \$EXIT_CODE
+CMD_EOF
+        chmod +x "/tmp/$cmd"
+    fi
+done
+
+# Create a special wrapper for interactive commands that are harder to capture
+for cmd in bash sh; do
+    if [ -x "/bin/$cmd" ]; then
+        cat > "/tmp/$cmd" << SHELL_EOF
+#!/bin/sh
+TIMESTAMP=\$(date '+%Y-%m-%d %H:%M:%S UTC')
+echo "[\$TIMESTAMP] [SSH-CMD] $cmd \$*" >> {log_path}
+echo "[\$TIMESTAMP] [SSH-WARNING] Interactive shell $cmd started - some commands may not be fully logged" >> {log_path}
+exec "/bin/$cmd" "\$@"
+SHELL_EOF
+        chmod +x "/tmp/$cmd"
+    fi
+done
+
+# Set up PS1 with command logging via DEBUG trap (bash feature) for comprehensive coverage
+# If bash is available, use it for better command tracking
+if [ -x "/bin/bash" ]; then
+    export PS1='miel@honeypot:\w$ '
+    exec /bin/bash --rcfile <(echo '
+        set -o functrace
+        shopt -s extdebug
+
+        # Function to log commands with output capture
+        log_bash_command() {{
+            local cmd="$1"
+            local timestamp=$(date "+%Y-%m-%d %H:%M:%S UTC")
+
+            # Skip logging our own logging commands and temp file operations to avoid recursion
+            case "$cmd" in
+                *{log_path}*|*"date "*|*"echo "*timestamp*|*log_bash_command*|*"/tmp/cmd_output_"*|*"/tmp/cmd_error_"*|*"/bin/cat "*|*"/usr/bin/cat "*|*"/bin/rm "*|*"/usr/bin/rm "*)
+                    return
+                    ;;
+            esac
+
+            echo "[$timestamp] [SSH-CMD] $cmd" >> {log_path}
+        }}
+
+        # Set up DEBUG trap
+        trap '\''log_bash_command "$BASH_COMMAND"'\'' DEBUG
+        export PS1="miel@honeypot:\w$ "
+    ')
+else
+    # Fallback to sh with custom PS1
+    export PS1='miel@honeypot:$PWD$ '
+    exec /bin/sh
+fi
+EOF
+                    chmod +x /usr/local/bin/logged_shell
+
+                    # Update the shell in passwd to use our logged shell for the miel user
+                    sed -i 's|miel:x:1000:1000:miel User:/home/miel:/bin/sh|miel:x:1000:1000:miel User:/home/miel:/usr/local/bin/logged_shell|' /etc/passwd
+
+                    # Start sshd with our custom config
+                    exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config 2>&1 | while IFS= read -r line; do
+                        echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [SSHD] $line" >> {log_path}
+                    done
+                    "#,
+                    p = p,
+                    log_path = log_path
                 )
             }
             "http" => {
                 let p = host_port;
-                // Use Python's built-in HTTP server
-                // FIXME: use a proper HTTP server
-                format!("/usr/bin/python3 -m http.server {p} --bind 127.0.0.1 --directory /www")
+                // Enhanced HTTP server with access logging
+                format!(
+                    r#"
+                    # Start HTTP server with access logging
+                    exec /usr/bin/python3 -c "
+import http.server
+import socketserver
+import datetime
+import sys
+
+class LoggingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        log_entry = '[%s] [HTTP] %s - %s' % (timestamp, self.address_string(), format % args)
+        with open('{log_path}', 'a') as f:
+            f.write(log_entry + '\\n')
+            f.flush()
+        print(log_entry, file=sys.stderr)
+
+    def do_GET(self):
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        log_entry = '[%s] [HTTP] GET request: %s from %s' % (timestamp, self.path, self.address_string())
+        with open('{log_path}', 'a') as f:
+            f.write(log_entry + '\\n')
+            f.flush()
+        super().do_GET()
+
+import os
+os.chdir('/www')
+with socketserver.TCPServer(('127.0.0.1', {p}), LoggingHTTPRequestHandler) as httpd:
+    httpd.serve_forever()
+" 2>&1 | while IFS= read -r line; do
+    echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [HTTP-SERVER] $line" >> {log_path}
+done
+                    "#,
+                    p = p,
+                    log_path = log_path
+                )
             }
-            _ => "/bin/sh /usr/bin/service".to_string(),
+            _ => {
+                format!(
+                    r#"
+                    # Generic service with logging
+                    exec /bin/sh /usr/bin/service 2>&1 | while IFS= read -r line; do
+                        echo "[$(date '+%Y-%m-%d %H:%M:%S UTC")] [SERVICE] $line" >> {log_path}
+                    done
+                    "#,
+                    log_path = log_path
+                )
+            }
         };
 
         debug!(
-            "Generated service command for {}: {}",
-            service_config.name, command
+            "Generated enhanced service command with logging for {}: {}",
+            service_config.name, command.lines().take(3).collect::<Vec<_>>().join(" ")
         );
         command
     }
 
-    /// Creates a PTY master used to capture stdio. Placeholder implementation.
+    /// Creates a unified log file to capture all shell activity from the container.
+    ///
+    /// This method creates a dedicated log file that will contain:
+    /// - Main container shell output
+    /// - SSH session activity (commands, output, interactions)
+    /// - Any other shell/PTY activity within the container
+    ///
+    /// The log file is created with appropriate permissions and can be read
+    /// to monitor all terminal activity happening inside the container.
     fn create_pty_master(&self, container_id: &str) -> Result<File, ContainerError> {
-        // TODO: Implement actual PTY creation logic
-        // For now, create a temporary file as placeholder
-        let pty_path = format!("/tmp/miel-pty-{}", container_id);
-        debug!("Creating PTY master at: {}", pty_path);
+        // Create a dedicated log directory for container activity
+        let log_dir = "/tmp/miel-logs";
+        std::fs::create_dir_all(log_dir).map_err(|e| {
+            error!("Failed to create log directory {}: {}", log_dir, e);
+            ContainerError::CreationFailed(format!("Failed to create log directory: {}", e))
+        })?;
 
-        std::fs::OpenOptions::new()
+        // Create a unified log file for all container shell activity
+        let log_path = format!("{}/container-{}-activity.log", log_dir, container_id);
+        debug!("Creating unified activity log at: {}", log_path);
+
+        let log_file = std::fs::OpenOptions::new()
             .create(true)
-            .truncate(true)
-            .write(true)
+            .append(true)
             .read(true)
-            .open(&pty_path)
+            .open(&log_path)
             .map_err(|e| {
-                error!("Failed to create PTY {}: {}", pty_path, e);
-                ContainerError::CreationFailed(format!("Failed to create PTY: {}", e))
-            })
+                error!("Failed to create activity log {}: {}", log_path, e);
+                ContainerError::CreationFailed(format!("Failed to create activity log: {}", e))
+            })?;
+
+        // Set appropriate permissions to allow container to write
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = log_file.metadata()
+                .map_err(|e| {
+                    error!("Failed to get log file metadata: {}", e);
+                    ContainerError::CreationFailed(format!("Failed to get log file metadata: {}", e))
+                })?
+                .permissions();
+            perms.set_mode(0o666); // rw-rw-rw- - allow container to write
+            std::fs::set_permissions(&log_path, perms)
+                .map_err(|e| {
+                    error!("Failed to set log file permissions: {}", e);
+                    ContainerError::CreationFailed(format!("Failed to set log file permissions: {}", e))
+                })?;
+        }
+
+        // Write initial log header
+        use std::io::Write;
+        let mut file_writer = &log_file;
+        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+        writeln!(file_writer, "=== Container {} Activity Log Started at {} ===", container_id, timestamp)
+            .map_err(|e| {
+                error!("Failed to write log header: {}", e);
+                ContainerError::CreationFailed(format!("Failed to write log header: {}", e))
+            })?;
+        file_writer.flush().map_err(|e| {
+            error!("Failed to flush log file: {}", e);
+            ContainerError::CreationFailed(format!("Failed to flush log file: {}", e))
+        })?;
+
+        info!("Successfully created unified activity log for container: {}", container_id);
+        Ok(log_file)
     }
 
     /// Allocates an ephemeral host port on 127.0.0.1 for the given protocol.

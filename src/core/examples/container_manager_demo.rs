@@ -1,8 +1,12 @@
 use log::{debug, error, info};
 use miel::configuration::{Protocol, ServiceConfig};
 use miel::container_management::ContainerManager;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::fs::File;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,6 +66,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "HTTP container: {} (host:{})",
         http_container.id, http_container.host_port
     );
+
+    // Start log monitoring for both containers
+    let log_monitors = Arc::new(Mutex::new(HashMap::new()));
+
+    // Monitor SSH container logs
+    let ssh_log_path = format!("/tmp/miel-logs/container-{}-activity.log", ssh_container.id);
+    let ssh_container_id = ssh_container.id.clone();
+    let log_monitors_ssh = Arc::clone(&log_monitors);
+    tokio::spawn(async move {
+        monitor_container_log(ssh_log_path, ssh_container_id, log_monitors_ssh).await;
+    });
+
+    // Monitor HTTP container logs
+    let http_log_path = format!("/tmp/miel-logs/container-{}-activity.log", http_container.id);
+    let http_container_id = http_container.id.clone();
+    let log_monitors_http = Arc::clone(&log_monitors);
+    tokio::spawn(async move {
+        monitor_container_log(http_log_path, http_container_id, log_monitors_http).await;
+    });
+
+    info!("Started log monitoring for containers:");
+    info!("  SSH container log: /tmp/miel-logs/container-{}-activity.log", ssh_container.id);
+    info!("  HTTP container log: /tmp/miel-logs/container-{}-activity.log", http_container.id);
 
     // Create external server sockets that clients will connect to
     let ssh_listener = TcpListener::bind("127.0.0.1:2222").await?;
@@ -190,4 +217,67 @@ async fn link_sockets(client: TcpStream, container: TcpStream, service: String) 
     }
 
     info!("{} connection closed", service);
+}
+
+/// Monitors the container log file and displays new entries in the main program log
+async fn monitor_container_log(
+    log_path: String,
+    container_id: String,
+    _log_monitors: Arc<Mutex<HashMap<String, Vec<String>>>>,
+) {
+    info!("Starting log monitor for container: {} at {}", container_id, log_path);
+
+    // Wait a bit for the log file to be created
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    let mut last_position = 0u64;
+
+    loop {
+        // Try to open and read the log file
+        match File::open(&log_path).await {
+            Ok(mut file) => {
+                // Seek to the last known position
+                if let Err(e) = file.seek(std::io::SeekFrom::Start(last_position)).await {
+                    error!("Failed to seek in log file {}: {}", log_path, e);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    continue;
+                }
+
+                let mut reader = BufReader::new(file);
+                let mut line = String::new();
+                let mut new_lines_count = 0;
+
+                // Read new lines from the current position
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) => break, // EOF
+                        Ok(bytes_read) => {
+                            // Display the log line in the main program's log
+                            let trimmed_line = line.trim_end();
+                            if !trimmed_line.is_empty() {
+                                info!("[CONTAINER-{}] {}", container_id, trimmed_line);
+                                new_lines_count += 1;
+                                last_position += bytes_read as u64;
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error reading log file {}: {}", log_path, e);
+                            break;
+                        }
+                    }
+                }
+
+                if new_lines_count > 0 {
+                    debug!("Displayed {} new log entries for container {}", new_lines_count, container_id);
+                }
+            }
+            Err(e) => {
+                debug!("Log file {} not yet available: {}", log_path, e);
+            }
+        }
+
+        // Wait before checking again
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    }
 }
