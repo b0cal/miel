@@ -1,4 +1,5 @@
 use crate::configuration::config::Config;
+use crate::error_handling::types::ControllerError;
 use crate::network::{network_listener::NetworkListener, types::SessionRequest};
 use log::{debug, error};
 use std::net::Ipv4Addr;
@@ -12,15 +13,15 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub fn new(config: Config) -> Self {
-        Self {
+    pub fn new(config: Config) -> Result<Self, ControllerError> {
+        Ok(Self {
             config,
             listener: None,
             session_rx: None,
-        }
+        })
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&mut self) -> Result<(), ControllerError> {
         let (tx, rx) = mpsc::channel(100);
         self.session_rx = Some(rx);
 
@@ -50,6 +51,7 @@ impl Controller {
             );
             debug!("Service detected as: {:?}", session_request.service_name);
         }
+        Ok(())
     }
 }
 
@@ -144,13 +146,13 @@ mod tests {
         let config = create_http_test_config().await;
         debug!("Created test config with NewtorkListener binding to port 8000",);
 
-        let mut controller = Controller::new(config);
+        let mut controller = Controller::new(config).unwrap();
         debug!("Controller initialized");
 
         debug!("Starting controller...");
         let controller_task = tokio::spawn(async move {
             debug!("Controller.run() is starting...");
-            controller.run().await;
+            let _ = controller.run().await;
             debug!("Controller.run() has ended");
         });
 
