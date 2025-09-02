@@ -25,6 +25,7 @@ use crate::error_handling::types::ContainerError;
 ///   internal service port.
 /// - This is a minimal, best-effort implementation not meant for production isolation.
 pub struct ContainerManager {
+<<<<<<< HEAD
     runtime: Runtime,
     active_containers: HashMap<String, ContainerHandle>,
     stats: ContainerStats,

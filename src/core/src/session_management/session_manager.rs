@@ -11,11 +11,9 @@ use log::{debug, error, info};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::copy_bidirectional;
 use tokio::net::TcpStream;
-use tokio::spawn;
 use uuid::Uuid;
-use uuid::Variant::Future;
 
 /// The structure related to session management
 ///
@@ -89,17 +87,17 @@ impl SessionManager {
     }
 
     pub fn cleanup_expired_sessions(&mut self) {
-        for active_session in self.active_sessions.values_mut() {
+        self.active_sessions.retain(|id, active_session| {
             if let Some(end_time) = active_session.session.end_time {
                 let elapsed = Utc::now() - end_time;
                 if elapsed.num_seconds() >= self.session_timeout.as_secs() as i64 {
                     active_session.session.status = SessionStatus::Completed;
-                    self.active_sessions.remove(&active_session.session.id);
-                    self.container_manager
-                        .cleanup_container(&active_session.container_handle);
+                    self.container_manager.cleanup_container(&active_session.container_handle);
+                    return false;
                 }
             }
-        }
+            true
+        });
     }
 
     pub fn get_active_session_count(&self) -> usize {
@@ -163,7 +161,7 @@ impl SessionManager {
         mut client_stream: &mut TcpStream,
         mut container_stream: &mut TcpStream,
     ) -> Result<(), SessionError> {
-        match tokio::io::copy_bidirectional(&mut client_stream, &mut container_stream).await {
+        match copy_bidirectional(&mut client_stream, &mut container_stream).await {
             Ok((from_client, from_container)) => {
                 debug!(
                     "connection closed ({} bytes client->container, {} bytes container->client)",
