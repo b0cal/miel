@@ -60,9 +60,9 @@ use crate::configuration::types::ServiceConfig;
 use crate::error_handling::types::NetworkError;
 
 use chrono::Utc;
-use log::error;
+use log::{error, info, warn};
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::mpsc::Sender;
 
@@ -108,9 +108,6 @@ pub struct NetworkListener {
 
     /// Connection filtering component for security and access control
     connection_filter: ConnectionFilter,
-
-    /// Address to which the listeners are bound
-    bind_addr: SocketAddr,
 }
 
 impl NetworkListener {
@@ -132,10 +129,10 @@ impl NetworkListener {
     /// use std::net::SocketAddr;
     ///
     /// let (tx, rx) = mpsc::channel(100);
-    /// let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
+    /// let bind_addr = Ipv4Addr::new(127,0,0,1);
     /// let listener = NetworkListener::new(tx, bind_addr);
     /// ```
-    pub fn new(session_tx: Sender<SessionRequest>, bind_addr: SocketAddr) -> Self {
+    pub fn new(session_tx: Sender<SessionRequest>) -> Self {
         Self {
             listeners: HashMap::new(),
             session_tx,
@@ -143,7 +140,6 @@ impl NetworkListener {
                 service_patterns: HashMap::new(),
             },
             connection_filter: ConnectionFilter::default(),
-            bind_addr,
         }
     }
 
@@ -192,6 +188,7 @@ impl NetworkListener {
     /// }
     /// ```
     pub fn bind_services(&mut self, services: &[ServiceConfig]) -> Result<(), NetworkError> {
+        info!("Service binding started!");
         self.service_detector = ServiceDetector::new(services);
 
         let services_it = services.iter();
@@ -207,6 +204,8 @@ impl NetworkListener {
 
             self.listeners.insert(s.port, socket);
         }
+
+        info!("End of service binding");
 
         Ok(())
     }
@@ -256,23 +255,22 @@ impl NetworkListener {
     ///     Ok(())
     /// }
     /// ```
-    pub async fn start_listening(&mut self) -> Result<(), NetworkError> {
+    pub async fn start_listening(&mut self, bind_addr: Ipv4Addr) -> Result<(), NetworkError> {
+        info!("Starting listening on services");
         // Will handle waiting all listeners tasks to complete
         let mut listener_handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
         // Bind all sockets and create listeners
         for (port, socket) in self.listeners.drain() {
-            //TODO: Not sure of what should be the address to bind to
+            info!("Binding socket to address {} with port {}", bind_addr, port);
 
-            // Bind socket to the address
-            if let Err(e) = socket.bind(self.bind_addr) {
+            // Bind socket to the bind_address with port specified in the ServiceConfig
+            if let Err(e) = socket.bind(SocketAddr::new(IpAddr::V4(bind_addr), port)) {
                 error!("[!] Failed to bind to port {}: {:?}", port, e);
                 return Err(NetworkError::BindError(e));
             }
 
-            //TODO: to discuss but could it be a good idea to have associated functions in the
-            //Controller to get any of the configuration value (i.e. max_connections for this part
-            //of the function)
+            info!("Binding successfull!");
 
             // Convert to listener
             let listener = match socket.listen(1024) {
@@ -284,8 +282,6 @@ impl NetworkListener {
                     return Err(NetworkError::BindError(e));
                 }
             };
-
-            log::info!("[+] Successfully bound to port {}", port);
 
             // Clone components used for the async listening session
             let session_tx = self.session_tx.clone();
@@ -322,23 +318,24 @@ impl NetworkListener {
         connection_filter: ConnectionFilter,
         port: u16,
     ) {
-        log::info!("[+] Started listening on port {}", port);
+        info!("Started listening on port {}", port);
 
         loop {
             //Accept incomming connection
             let (stream, client_addr) = match listener.accept().await {
-                Ok((stream, addr)) => (stream, addr),
+                Ok((stream, addr)) => {
+                    info!("[+] New connection accepted! from address {}", addr);
+                    (stream, addr)
+                }
                 Err(e) => {
                     error!("[!] Failed to accept connection on port {}: {:?}", port, e);
                     continue;
                 }
             };
 
-            log::debug!("[+] New connection from {} on port {}", client_addr, port);
-
             // Check if connection should be accepted
             if !connection_filter.should_accept_connection(&client_addr.ip(), port) {
-                log::warn!("[!] Connection from {} rejected by filter", client_addr);
+                warn!("[!] Connection from {} rejected by filter", client_addr);
                 continue;
             }
 
@@ -386,10 +383,9 @@ impl NetworkListener {
             }
         };
 
-        log::info!(
+        info!(
             "[+] Detected sevice '{:?}' for connection from {}",
-            service_name,
-            client_addr
+            service_name, client_addr
         );
 
         // Create session request
@@ -401,11 +397,11 @@ impl NetworkListener {
         };
 
         if (session_tx.send(session_request).await).is_err() {
-            log::error!("[!] Failed to send session request - channel may be closed");
+            error!("Failed to send session request - channel may be closed");
             return Err(NetworkError::ChannelFailed);
         }
 
-        log::debug!("[+] Session request sent successfully for {}", client_addr);
+        info!("[+] Session request sent successfully for {}", client_addr);
 
         Ok(())
     }
@@ -423,10 +419,9 @@ mod tests {
     fn test_bind_services_from_legit_file() {
         // Build channel
         let (tx, _) = mpsc::channel(100);
-        let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
 
         // Create new NetworkListener
-        let mut listener = NetworkListener::new(tx, bind_addr);
+        let mut listener = NetworkListener::new(tx);
 
         // Binding a server shouldn't return an error, if returns Err, panic! and test fails
         listener.bind_services(&[ServiceConfig::default()]).unwrap();
@@ -436,18 +431,18 @@ mod tests {
     async fn test_start_listening_success() {
         let (session_tx, _) = mpsc::channel::<SessionRequest>(100);
 
-        let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
-
-        let mut network_listener = NetworkListener::new(session_tx, bind_addr);
+        let mut network_listener = NetworkListener::new(session_tx);
 
         let service_config = ServiceConfig {
-            port: 0,
+            name: "HTTP".to_string(),
             ..Default::default()
         };
         let _result = network_listener.bind_services(&[service_config]);
 
         // Start listening in a separate task with timeout since it runs indefinitely
-        let listening_task = tokio::spawn(async move { network_listener.start_listening().await });
+        let bind_addr = Ipv4Addr::new(127, 0, 0, 1);
+        let listening_task =
+            tokio::spawn(async move { network_listener.start_listening(bind_addr).await });
 
         // Give it a moment to start binding
         time::sleep(time::Duration::from_millis(100)).await;
@@ -509,7 +504,7 @@ mod tests {
         let service_detector = ServiceDetector::new(&[ServiceConfig::default()]);
 
         // Create a mock TCP connection
-        let listener = TcpListener::bind("127.0.0.1:8000").await.unwrap();
+        let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
         let addr = listener.local_addr().unwrap();
 
         // Connect to create a stream pair
