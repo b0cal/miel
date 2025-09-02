@@ -780,37 +780,62 @@ EOF
             }
             "http" => {
                 let p = host_port;
-                // Enhanced HTTP server with access logging
+                // Minimal HTTP server that just returns 200 OK
                 format!(
                     r#"
-                    # Start HTTP server with access logging
-                    exec /usr/bin/python3 -c "
-import http.server
-import socketserver
+                    # Set PATH to include all common Python locations
+                    export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+                    # Try to find python3 in common locations and start minimal HTTP server
+                    PYTHON3=""
+                    for py in /usr/bin/python3 /usr/local/bin/python3 /bin/python3; do
+                        if [ -x "$py" ]; then
+                            PYTHON3="$py"
+                            break
+                        fi
+                    done
+
+                    if [ -z "$PYTHON3" ]; then
+                        echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [HTTP-ERROR] Python 3 not found in any standard location" >> {log_path}
+                        exit 1
+                    fi
+
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [HTTP-INFO] Starting minimal HTTP server with Python 3 at: $PYTHON3" >> {log_path}
+
+                    # Start minimal HTTP server that just returns 200 OK
+                    exec "$PYTHON3" -c "
+import socket
+import threading
 import datetime
-import sys
 
-class LoggingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, format, *args):
+def handle_request(conn, addr):
+    try:
+        data = conn.recv(1024).decode('utf-8')
+        # Simple 200 OK response
+        response = 'HTTP/1.1 200 OK\\r\\nContent-Length: 2\\r\\n\\r\\nOK'
+        conn.send(response.encode('utf-8'))
+
+        # Log the request
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-        log_entry = '[%s] [HTTP] %s - %s' % (timestamp, self.address_string(), format % args)
         with open('{log_path}', 'a') as f:
-            f.write(log_entry + '\\n')
+            f.write('[%s] [HTTP] Request from %s\\n' % (timestamp, addr[0]))
             f.flush()
-        print(log_entry, file=sys.stderr)
+    except:
+        pass
+    finally:
+        conn.close()
 
-    def do_GET(self):
-        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-        log_entry = '[%s] [HTTP] GET request: %s from %s' % (timestamp, self.path, self.address_string())
-        with open('{log_path}', 'a') as f:
-            f.write(log_entry + '\\n')
-            f.flush()
-        super().do_GET()
+# Create and bind socket
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(('127.0.0.1', {p}))
+server.listen(5)
 
-import os
-os.chdir('/www')
-with socketserver.TCPServer(('127.0.0.1', {p}), LoggingHTTPRequestHandler) as httpd:
-    httpd.serve_forever()
+print('HTTP server listening on 127.0.0.1:{p}')
+
+while True:
+    conn, addr = server.accept()
+    threading.Thread(target=handle_request, args=(conn, addr)).start()
 " 2>&1 | while IFS= read -r line; do
     echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [HTTP-SERVER] $line" >> {log_path}
 done
