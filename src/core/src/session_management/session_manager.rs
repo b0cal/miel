@@ -56,7 +56,7 @@ impl SessionManager {
     pub async fn handle_session(&mut self, request: SessionRequest) -> Result<(), SessionError> {
         let session = match self.create_session(request) {
             Ok(s) => s,
-            Err(e) => return Err(SessionError::CreationFailed),
+            Err(_) => return Err(SessionError::CreationFailed),
         };
 
         let active_session = match self.active_sessions.get(&session.id) {
@@ -64,7 +64,7 @@ impl SessionManager {
             None => return Err(SessionError::CreationFailed),
         };
 
-        let container_handle = match active_session.container_handle {
+        let container_handle = match &active_session.container_handle {
             Some(c) => c,
             None => return Err(SessionError::CreationFailed),
         };
@@ -83,7 +83,7 @@ impl SessionManager {
                 active_session.session.status = SessionStatus::Completed;
                 self.active_sessions.remove(&active_session.session.id);
                 self.container_manager
-                    .cleanup_container(active_session.container_handle);
+                    .cleanup_container(&active_session.container_handle);
             }
         }
     }
@@ -107,10 +107,10 @@ impl SessionManager {
     }
 
     fn create_session(&mut self, request: SessionRequest) -> Result<Session, SessionError> {
-        let new_container_handle = match self.container_manager.create_container(request) {
-            Ok(_) => Ok(()),
+        let new_container_handle = match self.container_manager.create_container(&request) {
+            Ok(container_handle) => container_handle,
             Err(e) => return Err(SessionError::ContainerError(e)),
-        }; //TODO a reflechir sur ce qu'on envois comme argument a la fonction create_container
+        };
 
         let new_session = Session {
             id: Uuid::new_v4(),
@@ -118,7 +118,7 @@ impl SessionManager {
             client_addr: request.client_addr,
             start_time: request.timestamp,
             end_time: None,
-            container_id: Some((new_container_handle.id).to_string()),
+            container_id: Some(new_container_handle.id.to_string()),
             bytes_transferred: 0,
             status: SessionStatus::Active,
         };
@@ -126,14 +126,17 @@ impl SessionManager {
         let session_id = new_session.id;
         let new_active_session = ActiveSession {
             session: new_session,
-            container_handle: new_container_handle,
-            stream_recorder: StreamRecorder::new(session_id, self.storage),
+            container_handle: Some(new_container_handle),
+            stream_recorder: StreamRecorder::new(session_id, &self.storage),
         };
         let _ = match self.active_sessions.insert(session_id, new_active_session) {
             Some(_) => Ok(self.active_sessions.get(&session_id)),
-            None => {}
+            None => Err(SessionError::CreationFailed),
         };
-        Ok(self.active_sessions.get(&session_id))
+        Ok(match self.active_sessions.get(&session_id){
+            Some(&active_session) => active_session.session,
+            None => return Err(SessionError::CreationFailed),
+        })
     }
 
     async fn setup_data_proxy(
