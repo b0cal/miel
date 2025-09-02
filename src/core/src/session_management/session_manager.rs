@@ -4,6 +4,7 @@ use crate::data_capture::stream_recorder::StreamRecorder;
 use crate::error_handling::types::SessionError;
 use crate::network::types::SessionRequest;
 use crate::session::Session;
+use crate::storage::Storage;
 use crate::SessionStatus;
 use chrono::Utc;
 use log::{debug, error, info};
@@ -60,12 +61,12 @@ impl SessionManager {
 
         let active_session = match self.active_sessions.get(&session.id) {
             Some(a) => a.clone(),
-            None => return Err(SessionError::ContainerError("No active session found")),
+            None => return Err(SessionError::CreationFailed),
         };
 
         let container_handle = match active_session.container_handle {
             Some(c) => c,
-            None => return Err(SessionError::ContainerError("no container handle")),
+            None => return Err(SessionError::CreationFailed),
         };
 
         self.setup_data_proxy(session.id, request.stream, container_handle.tcp_stream)
@@ -191,6 +192,8 @@ impl SessionManager {
         }
 
         info!("connection closed");
+
+        Ok(())
     }
 }
 
