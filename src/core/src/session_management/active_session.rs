@@ -1,6 +1,7 @@
 use crate::container_management::container_handle::ContainerHandle;
 use crate::data_capture::stream_recorder::StreamRecorder;
 use crate::session_management::session::Session;
+
 pub struct ActiveSession {
     // Fields for the ActiveSession struct
     pub session: Session,

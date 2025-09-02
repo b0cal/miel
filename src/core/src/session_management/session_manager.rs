@@ -13,7 +13,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::spawn;
 use uuid::Uuid;
+use uuid::Variant::Future;
 
 /// The structure related to session management
 ///
@@ -54,23 +56,29 @@ impl SessionManager {
     }
 
     pub async fn handle_session(&mut self, request: SessionRequest) -> Result<(), SessionError> {
-        let session = match self.create_session(request) {
+        let session = match self.create_session(&request) {
             Ok(s) => s,
             Err(_) => return Err(SessionError::CreationFailed),
         };
 
-        let active_session = match self.active_sessions.get(&session.id) {
-            Some(a) => a.clone(),
+        let mut active_session = match self.active_sessions.remove(&session.id) {
+            Some(a) => a,
             None => return Err(SessionError::CreationFailed),
         };
 
-        let container_handle = match &active_session.container_handle {
+        let mut container_handle = match active_session.container_handle.take() {
             Some(c) => c,
             None => return Err(SessionError::CreationFailed),
         };
 
-        self.setup_data_proxy(session.id, request.stream, container_handle.tcp_stream)
+        let tcp_stream = container_handle.tcp_stream.take();
+
+        self.setup_data_proxy(session.id, request.stream, tcp_stream.unwrap())
             .await?;
+
+        //put back tcp_stream into active_session.container_handle.tcp_stream
+
+        self.active_sessions.insert(session.id, active_session);
 
         Ok(())
     }
@@ -106,7 +114,7 @@ impl SessionManager {
         Ok(())
     }
 
-    fn create_session(&mut self, request: SessionRequest) -> Result<Session, SessionError> {
+    fn create_session(&mut self, request: &SessionRequest) -> Result<Session, SessionError> {
         let new_container_handle = match self.container_manager.create_container(&request) {
             Ok(container_handle) => container_handle,
             Err(e) => return Err(SessionError::ContainerError(e)),
@@ -114,7 +122,7 @@ impl SessionManager {
 
         let new_session = Session {
             id: Uuid::new_v4(),
-            service_name: request.service_name,
+            service_name: request.service_name.clone(),
             client_addr: request.client_addr,
             start_time: request.timestamp,
             end_time: None,
@@ -128,12 +136,13 @@ impl SessionManager {
             session: new_session,
             container_handle: Some(new_container_handle),
             stream_recorder: StreamRecorder::new(session_id, &self.storage),
+            _cleanup_handle: tokio::spawn(async {}),
         };
         let _ = match self.active_sessions.insert(session_id, new_active_session) {
             Some(_) => Ok(self.active_sessions.get(&session_id)),
             None => Err(SessionError::CreationFailed),
         };
-        Ok(match self.active_sessions.get(&session_id){
+        Ok(match self.active_sessions.get(&session_id) {
             Some(&active_session) => active_session.session,
             None => return Err(SessionError::CreationFailed),
         })
