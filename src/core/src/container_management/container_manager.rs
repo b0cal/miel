@@ -295,20 +295,28 @@ impl ContainerManager {
             let mut perms = std::fs::metadata(log_dir)
                 .map_err(|e| {
                     error!("Failed to get log directory metadata: {}", e);
-                    ContainerError::CreationFailed(format!("Failed to get log directory metadata: {}", e))
+                    ContainerError::CreationFailed(format!(
+                        "Failed to get log directory metadata: {}",
+                        e
+                    ))
                 })?
                 .permissions();
             perms.set_mode(0o777); // rwxrwxrwx - allow all users to write
-            std::fs::set_permissions(log_dir, perms)
-                .map_err(|e| {
-                    error!("Failed to set log directory permissions: {}", e);
-                    ContainerError::CreationFailed(format!("Failed to set log directory permissions: {}", e))
-                })?;
+            std::fs::set_permissions(log_dir, perms).map_err(|e| {
+                error!("Failed to set log directory permissions: {}", e);
+                ContainerError::CreationFailed(format!(
+                    "Failed to set log directory permissions: {}",
+                    e
+                ))
+            })?;
         }
 
         // Bind the log directory so it's accessible from within the container
         cmd.arg(format!("--bind={}", log_dir));
-        debug!("Bound log directory {} to container {}", log_dir, container_id);
+        debug!(
+            "Bound log directory {} to container {}",
+            log_dir, container_id
+        );
 
         // Bind essential host dirs so common binaries and their libs are available
         // inside the minimal rootfs. Only bind paths that exist on the host.
@@ -572,7 +580,10 @@ impl ContainerManager {
             std::fs::set_permissions(format!("{}/usr/bin/service", container_path), perms)
                 .map_err(|e| {
                     error!("Failed to set script permissions: {}", e);
-                    ContainerError::CreationFailed(format!("Failed to set script permissions: {}", e))
+                    ContainerError::CreationFailed(format!(
+                        "Failed to set script permissions: {}",
+                        e
+                    ))
                 })?;
         }
 
@@ -584,7 +595,12 @@ impl ContainerManager {
     ///
     /// For SSH services, this includes comprehensive logging configuration to capture
     /// all session activity to the unified log file.
-    fn get_service_command(&self, service_config: &ServiceConfig, host_port: u16, container_id: &str) -> String {
+    fn get_service_command(
+        &self,
+        service_config: &ServiceConfig,
+        host_port: u16,
+        container_id: &str,
+    ) -> String {
         // Get the log file path for this container (inside the container, the bind mount makes it accessible)
         let log_path = format!("/tmp/miel-logs/container-{}-activity.log", container_id);
 
@@ -859,7 +875,8 @@ done
 
         debug!(
             "Generated enhanced service command with logging for {}: {}",
-            service_config.name, command.lines().take(3).collect::<Vec<_>>().join(" ")
+            service_config.name,
+            command.lines().take(3).collect::<Vec<_>>().join(" ")
         );
         command
     }
@@ -899,35 +916,45 @@ done
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = log_file.metadata()
+            let mut perms = log_file
+                .metadata()
                 .map_err(|e| {
                     error!("Failed to get log file metadata: {}", e);
-                    ContainerError::CreationFailed(format!("Failed to get log file metadata: {}", e))
+                    ContainerError::CreationFailed(format!(
+                        "Failed to get log file metadata: {}",
+                        e
+                    ))
                 })?
                 .permissions();
             perms.set_mode(0o666); // rw-rw-rw- - allow container to write
-            std::fs::set_permissions(&log_path, perms)
-                .map_err(|e| {
-                    error!("Failed to set log file permissions: {}", e);
-                    ContainerError::CreationFailed(format!("Failed to set log file permissions: {}", e))
-                })?;
+            std::fs::set_permissions(&log_path, perms).map_err(|e| {
+                error!("Failed to set log file permissions: {}", e);
+                ContainerError::CreationFailed(format!("Failed to set log file permissions: {}", e))
+            })?;
         }
 
         // Write initial log header
         use std::io::Write;
         let mut file_writer = &log_file;
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        writeln!(file_writer, "=== Container {} Activity Log Started at {} ===", container_id, timestamp)
-            .map_err(|e| {
-                error!("Failed to write log header: {}", e);
-                ContainerError::CreationFailed(format!("Failed to write log header: {}", e))
-            })?;
+        writeln!(
+            file_writer,
+            "=== Container {} Activity Log Started at {} ===",
+            container_id, timestamp
+        )
+        .map_err(|e| {
+            error!("Failed to write log header: {}", e);
+            ContainerError::CreationFailed(format!("Failed to write log header: {}", e))
+        })?;
         file_writer.flush().map_err(|e| {
             error!("Failed to flush log file: {}", e);
             ContainerError::CreationFailed(format!("Failed to flush log file: {}", e))
         })?;
 
-        info!("Successfully created unified activity log for container: {}", container_id);
+        info!(
+            "Successfully created unified activity log for container: {}",
+            container_id
+        );
         Ok(log_file)
     }
 
