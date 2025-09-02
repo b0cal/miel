@@ -55,43 +55,49 @@ impl SessionManager {
         }
     }
 
-    pub async fn handle_session(&mut self, request: SessionRequest) -> Result<(), SessionError> {
+    pub async fn handle_session(
+        &mut self,
+        mut request: SessionRequest,
+    ) -> Result<(), SessionError> {
         let session = match self.create_session(&request) {
             Ok(s) => s,
             Err(_) => return Err(SessionError::CreationFailed),
         };
 
-        let mut active_session = match self.active_sessions.remove(&session.id) {
+        let active_session = match self.active_sessions.remove(&session.id) {
             Some(a) => a,
             None => return Err(SessionError::CreationFailed),
         };
 
-        let mut container_handle = match active_session.container_handle.take() {
+        let mut container_handle = match active_session.container_handle {
             Some(c) => c,
             None => return Err(SessionError::CreationFailed),
         };
 
-        let tcp_stream = container_handle.tcp_stream.take();
+        let tcp_stream = match container_handle.tcp_stream.as_mut() {
+            Some(s) => s, // <-- `s` is now `&mut TcpStream`
+            None => {
+                error!("No TCP stream available for container");
+                return Err(SessionError::CreationFailed);
+            }
+        };
 
-        self.setup_data_proxy(session.id, request.stream, tcp_stream.unwrap())
+        self.setup_data_proxy(session.id, &mut request.stream, tcp_stream)
             .await?;
-
-        //put back tcp_stream into active_session.container_handle.tcp_stream
-
-        self.active_sessions.insert(session.id, active_session);
 
         Ok(())
     }
 
     pub fn cleanup_expired_sessions(&mut self) {
         for active_session in self.active_sessions.values_mut() {
-            if active_session.session.end_time != None
-                && Utc::now() - active_session.session.end_time >= self.session_timeout
-            {
-                active_session.session.status = SessionStatus::Completed;
-                self.active_sessions.remove(&active_session.session.id);
-                self.container_manager
-                    .cleanup_container(&active_session.container_handle);
+            if let Some(end_time) = active_session.session.end_time {
+                let elapsed = Utc::now() - end_time;
+                if elapsed.num_seconds() >= self.session_timeout.as_secs() as i64 {
+                    active_session.session.status = SessionStatus::Completed;
+                    self.active_sessions.remove(&active_session.session.id);
+                    self.container_manager
+                        .cleanup_container(&active_session.container_handle);
+                }
             }
         }
     }
@@ -133,10 +139,13 @@ impl SessionManager {
 
         let session_id = new_session.id;
         let new_active_session = ActiveSession {
-            session: new_session,
+            session: new_session,mut request: SessionRequest
             container_handle: Some(new_container_handle),
             stream_recorder: StreamRecorder::new(session_id, &self.storage),
-            _cleanup_handle: tokio::spawn(async {}),
+            _cleanup_handle: tokio::spawn(async {
+                //TODO: make this, think about the best way to cleanup this mess
+                todo!()
+            }),
         };
         let _ = match self.active_sessions.insert(session_id, new_active_session) {
             Some(_) => Ok(self.active_sessions.get(&session_id)),
@@ -151,59 +160,22 @@ impl SessionManager {
     async fn setup_data_proxy(
         &self,
         session_id: Uuid,
-        client_stream: TcpStream,
-        container_stream: TcpStream,
+        mut client_stream: &mut TcpStream,
+        mut container_stream: &mut TcpStream,
     ) -> Result<(), SessionError> {
-        let (mut client_read, mut client_write) = client_stream.into_split();
-        let (mut container_read, mut container_write) = container_stream.into_split();
-
-        // Client to container forwarding
-        let client_to_container = async move {
-            let mut buffer = [0; 4096];
-            loop {
-                match client_read.read(&mut buffer).await {
-                    Ok(0) => {
-                        debug!("client disconnected");
-                        break;
-                    }
-                    Ok(n) => {
-                        debug!("client forwarding {} bytes to container", n);
-                        if container_write.write_all(&buffer[..n]).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
+        match tokio::io::copy_bidirectional(&mut client_stream, &mut container_stream).await {
+            Ok((from_client, from_container)) => {
+                debug!(
+                    "connection closed ({} bytes client->container, {} bytes container->client)",
+                    from_client, from_container
+                );
             }
-        };
-
-        // Container to client forwarding
-        let container_to_client = async move {
-            let mut buffer = [0; 4096];
-            loop {
-                match container_read.read(&mut buffer).await {
-                    Ok(0) => {
-                        debug!("container disconnected");
-                        break;
-                    }
-                    Ok(n) => {
-                        debug!("container forwarding {} bytes to client", n);
-                        if client_write.write_all(&buffer[..n]).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
+            Err(e) => {
+                error!("proxy error: {:?}", e);
             }
-        };
-
-        // Run both directions concurrently
-        tokio::select! {
-            _ = client_to_container => {},
-            _ = container_to_client => {},
         }
 
-        info!("connection closed");
+        info!("proxy session ended");
 
         Ok(())
     }
