@@ -2,6 +2,7 @@ use std::env;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
+use log::{debug, error, info};
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::{Expr, Func};
 use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, Database, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, QueryOrder, Set, Statement};
@@ -28,10 +29,12 @@ impl DatabaseStorage {
         if let Ok(path_str) = env::var("MIEL_DB_PATH") {
             let path = Path::new(&path_str);
             if let Some(parent) = path.parent() { std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?; }
+            info!("Opening SQLite database from MIEL_DB_PATH: {}", path.display());
             return Self::new_file(path);
         }
         let cwd = env::current_dir().map_err(|_| StorageError::ConnectionFailed)?;
         let path = cwd.join(Self::DEFAULT_DB_FILE);
+        info!("Opening default SQLite database at: {}", path.display());
         Self::new_file(path)
     }
 
@@ -44,20 +47,28 @@ impl DatabaseStorage {
         if let Some(parent) = path_ref.parent() {
             std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?;
         }
+        info!("Connecting to SQLite at: {}", path_ref.display());
         // DSN understood by sea-orm/sqlx driver; will create file if needed
         let dsn = format!("sqlite://{}?mode=rwc", path_ref.to_string_lossy());
         let conn = rt.block_on(async {
             let conn = Database::connect(dsn)
                 .await
-                .map_err(|_| StorageError::ConnectionFailed)?;
+                .map_err(|e| {
+                    error!("DB connect failed: {}", e);
+                    StorageError::ConnectionFailed
+                })?;
             // ensure foreign keys
             conn.execute(Statement::from_string(
                 DbBackend::Sqlite,
                 "PRAGMA foreign_keys = ON".to_string(),
             ))
             .await
-            .map_err(|_| StorageError::WriteFailed)?;
+            .map_err(|e| {
+                error!("Failed to enable foreign_keys PRAGMA: {}", e);
+                StorageError::WriteFailed
+            })?;
             // create schema
+            debug!("Ensuring sessions table exists");
             conn.execute(Statement::from_string(
                 DbBackend::Sqlite,
                 r#"
@@ -75,7 +86,11 @@ impl DatabaseStorage {
                 .to_string(),
             ))
             .await
-            .map_err(|_| StorageError::WriteFailed)?;
+            .map_err(|e| {
+                error!("Failed to create sessions table: {}", e);
+                StorageError::WriteFailed
+            })?;
+            debug!("Ensuring interactions table exists");
             conn.execute(Statement::from_string(
                 DbBackend::Sqlite,
                 r#"
@@ -89,7 +104,11 @@ impl DatabaseStorage {
                 .to_string(),
             ))
             .await
-            .map_err(|_| StorageError::WriteFailed)?;
+            .map_err(|e| {
+                error!("Failed to create interactions table: {}", e);
+                StorageError::WriteFailed
+            })?;
+            debug!("Ensuring artifacts table exists");
             conn.execute(Statement::from_string(
                 DbBackend::Sqlite,
                 r#"
@@ -102,9 +121,13 @@ impl DatabaseStorage {
                 .to_string(),
             ))
             .await
-            .map_err(|_| StorageError::WriteFailed)?;
+            .map_err(|e| {
+                error!("Failed to create artifacts table: {}", e);
+                StorageError::WriteFailed
+            })?;
             Ok::<_, StorageError>(conn)
         })?;
+        info!("SQLite connection ready");
         Ok(Self { rt, conn })
     }
 
@@ -169,7 +192,7 @@ impl Storage for DatabaseStorage {
                 .one(&self.conn)
                 .await
                 .map_err(|e| {
-                    eprintln!("DB read error in save_session find_by_id: {e}");
+                    error!("DB read error in save_session find_by_id: {}", e);
                     StorageError::ReadFailed
                 })?
             {
@@ -178,9 +201,10 @@ impl Storage for DatabaseStorage {
                     am.update(&self.conn)
                         .await
                         .map_err(|e| {
-                            eprintln!("DB write error in save_session update: {e}");
+                            error!("DB write error in save_session update: {}", e);
                             StorageError::WriteFailed
                         })?;
+                    info!("Updated session {}", session_obj.id);
                 }
                 None => {
                     // Use exec to avoid fetching inserted row (SQLite RETURNING may be unavailable)
@@ -188,9 +212,10 @@ impl Storage for DatabaseStorage {
                         .exec(&self.conn)
                         .await
                         .map_err(|e| {
-                            eprintln!("DB write error in save_session insert exec: {e}");
+                            error!("DB write error in save_session insert exec: {}", e);
                             StorageError::WriteFailed
                         })?;
+                    info!("Inserted session {}", session_obj.id);
                 }
             }
             Ok(())
@@ -200,6 +225,9 @@ impl Storage for DatabaseStorage {
     fn get_sessions(&self, filter: Option<SessionFilter>) -> Result<Vec<Session>, StorageError> {
         self.rt.block_on(async {
             let mut query = session::Entity::find();
+            if filter.is_some() {
+                debug!("Applying session filter");
+            }
             if let Some(f) = filter {
                 let mut cond = Condition::all();
                 if let Some(name) = f.service_name {
@@ -233,9 +261,10 @@ impl Storage for DatabaseStorage {
                 .all(&self.conn)
                 .await
                 .map_err(|e| {
-                    eprintln!("DB read error in get_sessions: {e}");
+                    error!("DB read error in get_sessions: {}", e);
                     StorageError::ReadFailed
                 })?;
+            debug!("Fetched {} session rows", rows.len());
             rows.into_iter().map(Self::from_session_model).collect()
         })
     }
@@ -250,9 +279,10 @@ impl Storage for DatabaseStorage {
             am.insert(&self.conn)
                 .await
                 .map_err(|e| {
-                    eprintln!("DB write error in save_interaction insert: {e}");
+                    error!("DB write error in save_interaction insert: {}", e);
                     StorageError::WriteFailed
                 })?;
+            debug!("Inserted interaction ({} bytes) for session {}", data.len(), session_id);
             Ok(())
         })
     }
@@ -266,12 +296,15 @@ impl Storage for DatabaseStorage {
                 .all(&self.conn)
                 .await
                 .map_err(|e| {
-                    eprintln!("DB read error in get_session_data: {e}");
+                    error!("DB read error in get_session_data: {}", e);
                     StorageError::ReadFailed
                 })?;
+            let mut chunks = 0usize;
             for r in rows {
                 out.extend_from_slice(&r.data);
+                chunks += 1;
             }
+            debug!("Concatenated {} interaction chunk(s) for session {}, total {} bytes", chunks, session_id, out.len());
             Ok(out)
         })
     }
@@ -283,15 +316,16 @@ impl Storage for DatabaseStorage {
                 Expr::col(session::Column::EndTime).into(),
                 Expr::col(session::Column::StartTime).into(),
             ]);
-            let cond = Expr::expr(coalesce).lt(cutoff);
+            let cond = Expr::expr(coalesce).lt(cutoff.clone());
             let res = session::Entity::delete_many()
                 .filter(cond)
                 .exec(&self.conn)
                 .await
                 .map_err(|e| {
-                    eprintln!("DB write error in cleanup_old_sessions delete_many: {e}");
+                    error!("DB write error in cleanup_old_sessions delete_many: {}", e);
                     StorageError::WriteFailed
                 })?;
+            info!("Deleted {} session(s) older than {}", res.rows_affected, cutoff);
             Ok(res.rows_affected as usize)
         })
     }
@@ -304,34 +338,36 @@ impl Storage for DatabaseStorage {
                 .one(&self.conn)
                 .await
                 .map_err(|e| {
-                    eprintln!("DB read error in save_capture_artifacts find_by_id: {e}");
+                    error!("DB read error in save_capture_artifacts find_by_id: {}", e);
                     StorageError::ReadFailed
                 })?
             {
                 Some(_) => {
                     let am = art::ActiveModel {
-                        session_id: Set(id),
+                        session_id: Set(id.clone()),
                         json: Set(json),
                     };
                     am.update(&self.conn)
                         .await
                         .map_err(|e| {
-                            eprintln!("DB write error in save_capture_artifacts update: {e}");
+                            error!("DB write error in save_capture_artifacts update: {}", e);
                             StorageError::WriteFailed
                         })?;
+                    info!("Updated artifacts for session {}", id);
                 }
                 None => {
                     let am = art::ActiveModel {
-                        session_id: Set(id),
+                        session_id: Set(id.clone()),
                         json: Set(json),
                     };
                     art::Entity::insert(am)
                         .exec(&self.conn)
                         .await
                         .map_err(|e| {
-                            eprintln!("DB write error in save_capture_artifacts insert exec: {e}");
+                            error!("DB write error in save_capture_artifacts insert exec: {}", e);
                             StorageError::WriteFailed
                         })?;
+                    info!("Inserted artifacts for session {}", id);
                 }
             }
             Ok(())
@@ -341,16 +377,17 @@ impl Storage for DatabaseStorage {
     fn get_capture_artifacts(&self, session_id: Uuid) -> Result<CaptureArtifacts, StorageError> {
         self.rt.block_on(async {
             let id = session_id.to_string();
-            let m = art::Entity::find_by_id(id)
+            let m = art::Entity::find_by_id(id.clone())
                 .one(&self.conn)
                 .await
                 .map_err(|e| {
-                    eprintln!("DB read error in get_capture_artifacts find_by_id: {e}");
+                    error!("DB read error in get_capture_artifacts find_by_id: {}", e);
                     StorageError::ReadFailed
                 })?
                 .ok_or(StorageError::ReadFailed)?;
             let artifacts: CaptureArtifacts =
                 serde_json::from_str(&m.json).map_err(|_| StorageError::ReadFailed)?;
+            debug!("Loaded artifacts for session {}", id);
             Ok(artifacts)
         })
     }
