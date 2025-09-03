@@ -83,7 +83,7 @@ use tokio::sync::mpsc::Sender;
 /// ```rust, no_run
 /// use tokio::sync::mpsc;
 /// use miel::network::network_listener::NetworkListener;
-/// use miel::config::types::ServiceConfig;
+/// use miel::configuration::types::ServiceConfig;
 ///
 /// #[tokio::main]
 /// async fn main() {
