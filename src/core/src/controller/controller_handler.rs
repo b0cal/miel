@@ -46,20 +46,10 @@ impl Controller {
             .map_err(|e| e.to_string())
             .unwrap();
 
-        let (listeners, session_tx, service_detector, connection_filter, shutdown_tx) =
-            self.listener.as_mut().unwrap().extract_for_listening();
+        let copy = self.listener.as_mut().unwrap().extract_for_listening();
 
         let handle = tokio::spawn(async move {
-            if let Err(e) = NetworkListener::start_listening(
-                listeners,
-                ip_addr,
-                session_tx,
-                service_detector,
-                connection_filter,
-                shutdown_tx,
-            )
-            .await
-            {
+            if let Err(e) = NetworkListener::start_listening(copy, ip_addr).await {
                 error!("NetworkListener failed: {:?}", e);
             }
         });
