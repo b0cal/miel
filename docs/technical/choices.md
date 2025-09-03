@@ -1,13 +1,13 @@
 # Technical choices
 
-## Programming language
+## 1. Programming language
 
-### Context
+### 1.1. Context
 
 The project requires a programming language that balances performance, security
 and development velocity for a 2-week development timeline with a 4-person team.
 
-### Rationale
+### 1.2. Rationale
 
 `Rust` has been selected as the primary programming language due to its growing
 adoption as the industry standards for security-critical applications. While it
@@ -20,13 +20,13 @@ In addition to this 'Security-firts design' features, Rust's performances can be
 compared to C/C++ performances. Its strong type system and comprehensive error
 handling reduce runtime failures and improve code maintainability.
 
-## Asynchronous runtime
+## 2. Asynchronous runtime
 
-### Context
+### 2.1. Context
 
 Our software needs a way of handling concurrent network connections properly.
 
-### Rationale
+### 2.2. Rationale
 
 Handling natively this task can be tedious an time-consuming, that's why using
 `tokio` as a asynchronous runtime can be life saving. It securely adresses
@@ -34,14 +34,14 @@ asynchrony in providing us an asynchronous version of the Rust's standard
 library. Its speed depends mostly on the use of the async/await language feature
 and lets us handle multiple simultaneous connections.
 
-## Container service
+## 3. Container service
 
-### Context
+### 3.1. Context
 
 To host the masquerade service we need an lightweight and efficient way of
 pulling small containers exposing vulnerabilities on the appropriate service.
 
-### Rationale
+### 3.2. Rationale
 
 Using VMs would be too resource consuming, that's why we went for a container
 solution. Docker could have been a good fit but we wanted to find something even
@@ -51,43 +51,43 @@ lighter than this an with a simpler API than Docker's.
 Linux namespaces and cgroups. It integrates well into systemd-based Linux
 system, is manageable as a systemd service and guarantees a fast startup time.
 
-## Codebase documentation
+## 4. Codebase documentation
 
-### Context
+### 4.1. Context
 
 Maintaining a good codebase documentation leads to better collaboration on the
 project and is easier for people to join the project on the way. Consistency is
 key which means we need to use a standardized why of documenting our codebase.
 
-### Rationale
+### 4.2. Rationale
 
 Rust's package manager, cargo, embeds a documentation manager in its toolchain,
 `rustdoc`. With simple commenting syntax that supports Markdown formatting, it
 allows us to generate the whole codebase documentation at once and lets us
 access an HTML riced version of it.
 
-## Initially supported services
+## 5. Initially supported services
 
-### Context
+### 5.1 Context
 
 We need to ship the product with at least two compatible services in order to
 have a POC.
 
-### Rationale
+### 5.2. Rationale
 
 `ssh` and `http` are the most scanned and prone to vulnerability services.
 That's why these are the first two services we support on this application.
 
-## Project Management
+## 6. Project Management
 
-### Context
+### 6.1. Context
 
 In order to track progress through the project, we need a project management
 system allowing us to know what needs to be done and what has been done.
 Moreover submitting new features should be done in a standardized why to keep
 better track of the history.
 
-### Rationale
+### 6.2. Rationale
 
 As Github serves us as our codebase repository and in order not to multiply the
 tools we are using, we went for the Github Project embedded solution. That lets
