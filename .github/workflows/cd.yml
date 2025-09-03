@@ -1,0 +1,128 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Only run if CI workflow completed successfully
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all tags from origin
+        run: |
+          git fetch --tags --force --prune --no-recurse-submodules
+
+      - name: Extract version from Cargo.toml
+        id: cargo_version
+        run: |
+          version=$(grep '^version' src/core/Cargo.toml | head -n1 | awk -F\" '{print $2}')
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Check if version was bumped
+        id: version_check
+        run: |
+          current_version="${{ steps.cargo_version.outputs.version }}"
+          echo "Current version: $current_version"
+
+          # Ensure version follows strict semver (MAJOR.MINOR.PATCH)
+          if ! echo "$current_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version '$current_version' is not valid semver (expected MAJOR.MINOR.PATCH like 1.2.3)"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Get the latest tag, if any exists (after fetching tags)
+          latest_tag=$(git tag -l "v*" --sort=-version:refname | head -n1)
+          
+          if [ -z "$latest_tag" ]; then
+            echo "No previous tags found, proceeding with first release"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "previous_version=" >> $GITHUB_OUTPUT
+          else
+            # Extract version from tag (remove 'v' prefix)
+            latest_version="${latest_tag#v}"
+            echo "Latest tagged version: $latest_version"
+            echo "previous_version=$latest_version" >> $GITHUB_OUTPUT
+            
+            # Check if current version is greater than latest version
+            if [ "$current_version" = "$latest_version" ]; then
+              echo "::warning::Version $current_version already exists as tag $latest_tag"
+              echo "Skipping release - no version bump detected"
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              exit 0
+            elif printf '%s\n%s\n' "$latest_version" "$current_version" | sort -V -C; then
+              echo "::notice:: Version bumped from $latest_version to $current_version"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+            else
+              echo "::error::Version $current_version is not greater than latest version $latest_version"
+              echo "Please ensure you're bumping the version correctly (following semver)"
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+
+      - name: Download build artifacts from CI
+        if: steps.version_check.outputs.should_release == 'true'
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          name: build-output
+          path: ./artifacts
+
+      - name: Create and push tag
+        if: steps.version_check.outputs.should_release == 'true'
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          tag_name="v${{ steps.cargo_version.outputs.version }}"
+          
+          # Double-check tag doesn't exist remotely
+          if git ls-remote --tags origin | grep -q "refs/tags/$tag_name$"; then
+            echo "::error::Tag $tag_name already exists on remote"
+            exit 1
+          fi
+          
+          git tag "$tag_name"
+          git push https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git "$tag_name"
+          echo "::notice:: Successfully created and pushed tag $tag_name"
+
+      - name: Create GitHub Release
+        if: steps.version_check.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.cargo_version.outputs.version }}
+          name: Release v${{ steps.cargo_version.outputs.version }}
+          body: |
+            ## What's Changed
+            - Release version ${{ steps.cargo_version.outputs.version }}
+            
+            ## Download
+            Download the `miel` binary for Linux x64.
+            
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.version_check.outputs.previous_version }}...v${{ steps.cargo_version.outputs.version }}
+          files: |
+            artifacts/miel
+          draft: false
+          prerelease: false

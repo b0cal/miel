@@ -8,7 +8,7 @@ monolithic binary for production.
 
 As a reminder, here's the relevant part of the directory structure:
 
-```
+```txt
 src/
 ├── core/     # Rust core
 │   ├── Cargo.toml
@@ -134,7 +134,3 @@ cargo make doc-lint-fix
 - **Rust-only changes**: work inside `src/core`, run `cargo run`.
 - **WebUI-only changes**: work inside `src/webui`, run `npm run dev`.
 - **Full-stack changes / final builds**: run `cargo make prod`.
-
-```
-
-```
