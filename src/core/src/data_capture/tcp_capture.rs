@@ -1,3 +1,9 @@
+//! TCP capture: full‑duplex proxying while recording traffic and timestamps.
+//!
+//! This module exposes [`TcpCapture`], which forwards data between a client and
+//! a container/service while buffering both directions and recording per‑chunk
+//! timestamps. It is used by the higher‑level `StreamRecorder` façade.
+
 use std::io;
 use std::sync::{Arc, Mutex};
 
@@ -15,6 +21,7 @@ type TcpTimestamps = Vec<(DateTime<Utc>, Direction, usize)>;
 type TcpArtifacts = (Vec<u8>, Vec<u8>, TcpTimestamps);
 
 #[derive(Debug)]
+/// Records TCP traffic for one session while acting as a transparent proxy.
 pub struct TcpCapture {
     pub(crate) session_id: Uuid,
     pub(crate) client_to_container: Mutex<Vec<u8>>,
@@ -23,6 +30,7 @@ pub struct TcpCapture {
 }
 
 impl TcpCapture {
+    /// Create a new `TcpCapture` instance for `session_id`.
     pub fn new(session_id: Uuid) -> Self {
         Self {
             session_id,
@@ -32,6 +40,15 @@ impl TcpCapture {
         }
     }
 
+    /// Forward data in both directions while recording bytes and timestamps.
+    ///
+    /// Behavior
+    /// - Spawns two tasks (client→container and container→client).
+    /// - Gracefully propagates EOF by shutting down the opposite writer.
+    /// - Buffers payloads and pushes `(timestamp, direction, len)` entries.
+    ///
+    /// Errors
+    /// - Returns [`CaptureError::TcpStreamError`] for I/O or task failures.
     pub async fn proxy_and_record(
         self: Arc<Self>,
         client_stream: TcpStream,
@@ -142,6 +159,7 @@ impl TcpCapture {
         Ok(())
     }
 
+    /// Return copies of client→container, container→client, and timestamp log.
     pub fn get_artifacts(&self) -> TcpArtifacts {
         let a = self.client_to_container.lock().unwrap().clone();
         let b = self.container_to_client.lock().unwrap().clone();

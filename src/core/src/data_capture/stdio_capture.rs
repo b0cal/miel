@@ -72,14 +72,16 @@ impl StdioCapture {
     /// Parse a unified container activity log file and split it into STDIN/STDOUT/STDERR streams.
     ///
     /// Supported line formats (examples):
+    /// ```txt
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [STDIN] <text>"
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [STDOUT] <text>"
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [STDERR] <text>"
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [SSH-CMD] <text>" => mapped to STDIN
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [SSH-OUTPUT] <text>" => mapped to STDOUT
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [SSH-ERROR] <text>" => mapped to STDERR
-    ///   Other tags (e.g., [SSHD], [SSH-SESSION], [SSH-EXIT], [HTTP-INFO], [HTTP-ERROR], [HTTP-SERVER]
-    ///   are ignored for byte streams.
+    /// ```
+    /// Other tags (e.g., SSHD, SSH-SESSION, SSH-EXIT, HTTP-INFO, HTTP-ERROR, HTTP-SERVER
+    /// are ignored for byte streams.
     pub fn capture_activity_log_from_path<P: AsRef<std::path::Path>>(
         &self,
         path: P,

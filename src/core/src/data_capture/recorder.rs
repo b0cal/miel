@@ -59,11 +59,11 @@ use super::types::CaptureArtifacts;
 ///
 /// A `StreamRecorder` owns per‑session capture state and a reference to
 /// a pluggable [`Storage`] implementation. It exposes three operations:
-/// - [`start_tcp_proxy`]: full‑duplex forwarding between client and container
+/// - [`StreamRecorder::start_tcp_proxy`]: full‑duplex forwarding between client and container
 ///   sockets while recording both directions with timestamps.
-/// - [`start_stdio_capture`]: optional, best‑effort snapshot from a PTY handle
+/// - [`StreamRecorder::start_stdio_capture`]: optional, best‑effort snapshot from a PTY handle
 ///   (e.g. container stdout/stderr); safe to call zero or multiple times.
-/// - [`finalize_capture`]: aggregates all data into [`CaptureArtifacts`],
+/// - [`StreamRecorder::finalize_capture`]: aggregates all data into [`CaptureArtifacts`],
 ///   persists them via [`Storage`], and returns the artifacts to the caller.
 ///
 /// Logging
