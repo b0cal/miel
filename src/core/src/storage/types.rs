@@ -3,6 +3,8 @@ use std::net::{IpAddr, SocketAddr};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
+// FIXME: use actual types once they are correctly exported from their modules
+
 // Reuse the SessionStatus enum from session_management
 use crate::session_management::SessionStatus;
 
