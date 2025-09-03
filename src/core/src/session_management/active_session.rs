@@ -10,8 +10,4 @@ pub struct ActiveSession {
     pub _cleanup_handle: tokio::task::JoinHandle<()>,
 }
 
-impl ActiveSession {
-    pub fn _cleanup_handle() {
-        todo!()
-    }
-}
+

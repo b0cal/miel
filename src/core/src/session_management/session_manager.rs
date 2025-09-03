@@ -8,12 +8,12 @@ use crate::session::Session;
 use crate::storage::Storage;
 use crate::SessionStatus;
 use chrono::Utc;
-use log::{debug, error, info};
+use log::{debug, error};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::copy_bidirectional;
 use tokio::net::TcpStream;
+use tokio::io::{self};
 use uuid::Uuid;
 
 /// The structure related to session management
@@ -56,36 +56,29 @@ impl SessionManager {
 
     pub async fn handle_session(
         &mut self,
-        mut request: SessionRequest,
+        request: SessionRequest,
         service_config: &ServiceConfig,
     ) -> Result<(), SessionError> {
-        let session = match self.create_session(&request, service_config) {
+
+        if self.find_session(&request).is_some() {
+            debug!("Session already active for Ip:{} / Service:{}", request.client_addr.ip(), request.service_name);
+            return Ok(());
+        }
+
+        let _active_session = match self.create_session(request, service_config) {
             Ok(s) => s,
             Err(_) => return Err(SessionError::CreationFailed),
         };
 
-        let active_session = match self.active_sessions.remove(&session.id) {
-            Some(a) => a,
-            None => return Err(SessionError::CreationFailed),
-        };
-
-        let mut container_handle = match active_session.container_handle {
-            Some(c) => c,
-            None => return Err(SessionError::CreationFailed),
-        };
-
-        let tcp_stream = match container_handle.tcp_socket.as_mut() {
-            Some(s) => s, // <-- `s` is now `&mut TcpStream`
-            None => {
-                error!("No TCP stream available for container");
-                return Err(SessionError::CreationFailed);
-            }
-        };
-
-        self.setup_data_proxy(session.id, &mut request.stream, tcp_stream)
-            .await?;
-
         Ok(())
+    }
+
+    fn find_session(&self, request: &SessionRequest) -> Option<&ActiveSession> {
+        let found = self.active_sessions.iter().find(|(_, active_s)| request.client_addr.ip() == active_s.session.client_addr.ip() && request.client_addr.port() == active_s.session.client_addr.port() );
+        match found {
+            Some((_, active_s)) => Some(active_s),
+            None => None,
+        }
     }
 
     pub fn cleanup_expired_sessions(&mut self) {
@@ -124,12 +117,29 @@ impl SessionManager {
         Ok(())
     }
 
+    async fn join_streams(s1: TcpStream, s2: TcpStream) -> io::Result<()> {
+        let (mut r1, mut w1) = s1.into_split();
+        let (mut r2, mut w2) = s2.into_split();
+
+        let c2s = tokio::spawn(async move {
+            io::copy(&mut r1, &mut w2).await
+        });
+
+        let s2c = tokio::spawn(async move {
+            io::copy(&mut r2, &mut w1).await
+        });
+
+        let _ = tokio::try_join!(c2s, s2c)?;
+
+        Ok(())
+    }
+
     fn create_session(
         &mut self,
-        request: &SessionRequest,
+        mut request: SessionRequest,
         service_config: &ServiceConfig,
-    ) -> Result<Session, SessionError> {
-        let new_container_handle = match self.container_manager.create_container(service_config) {
+    ) -> Result<(), SessionError> {
+        let mut container_handle = match self.container_manager.create_container(service_config) {
             Ok(container_handle) => container_handle,
             Err(e) => return Err(SessionError::ContainerError(e)),
         };
@@ -140,51 +150,29 @@ impl SessionManager {
             client_addr: request.client_addr,
             start_time: request.timestamp,
             end_time: None,
-            container_id: Some(new_container_handle.id.to_string()),
+            container_id: Some(container_handle.id.to_string()),
             bytes_transferred: 0,
             status: SessionStatus::Active,
         };
 
         let session_id = new_session.id;
+
+        let s1 = request.take_stream().unwrap();
+        let s2 = container_handle.take_stream().unwrap();
+
+        let join_handle = tokio::spawn(async move {
+            Self::join_streams(s1, s2).await;
+        });
+
         let new_active_session = ActiveSession {
             session: new_session,
-            container_handle: Some(new_container_handle),
+            container_handle: Some(container_handle),
             stream_recorder: StreamRecorder::new(session_id, self.storage.clone()),
-            _cleanup_handle: tokio::spawn(async {
-                //TODO: make this, think about the best way to cleanup this mess
-                todo!()
-            }),
+            _cleanup_handle: join_handle,
         };
 
         self.active_sessions.insert(session_id, new_active_session);
 
-        let active_session = self
-            .active_sessions
-            .get(&session_id)
-            .ok_or(SessionError::CreationFailed)?;
-
-        Ok(active_session.session.clone())
-    }
-
-    async fn setup_data_proxy(
-        &self,
-        session_id: Uuid,
-        mut client_stream: &mut TcpStream,
-        mut container_stream: &mut TcpStream,
-    ) -> Result<(), SessionError> {
-        match copy_bidirectional(&mut client_stream, &mut container_stream).await {
-            Ok((from_client, from_container)) => {
-                debug!(
-                    "connection closed ({} bytes client->container, {} bytes container->client)",
-                    from_client, from_container
-                );
-            }
-            Err(e) => {
-                error!("proxy error: {:?}", e);
-            }
-        }
-
-        info!("proxy session ended");
 
         Ok(())
     }
@@ -249,3 +237,59 @@ impl SessionManager {
 //
 //
 //
+
+// async fn link_sockets(client: TcpStream, container: TcpStream, service: String) {
+//     let (mut client_read, mut client_write) = client.into_split();
+//     let (mut container_read, mut container_write) = container.into_split();
+//
+//     let service_client = service.clone();
+//     let service_container = service.clone();
+//
+//     // Client to container forwarding
+//     let client_to_container = async move {
+//         let mut buffer = [0; 4096];
+//         loop {
+//             match client_read.read(&mut buffer).await {
+//                 Ok(0) => {
+//                     debug!("{} client disconnected", service_client);
+//                     break;
+//                 }
+//                 Ok(n) => {
+//                     debug!("{} forwarding {} bytes to container", service_client, n);
+//                     if container_write.write_all(&buffer[..n]).await.is_err() {
+//                         break;
+//                     }
+//                 }
+//                 Err(_) => break,
+//             }
+//         }
+//     };
+//
+//     // Container to client forwarding
+//     let container_to_client = async move {
+//         let mut buffer = [0; 4096];
+//         loop {
+//             match container_read.read(&mut buffer).await {
+//                 Ok(0) => {
+//                     debug!("{} container disconnected", service_container);
+//                     break;
+//                 }
+//                 Ok(n) => {
+//                     debug!("{} forwarding {} bytes to client", service_container, n);
+//                     if client_write.write_all(&buffer[..n]).await.is_err() {
+//                         break;
+//                     }
+//                 }
+//                 Err(_) => break,
+//             }
+//         }
+//     };
+//
+//     // Run both directions concurrently
+//     tokio::select! {
+//         _ = client_to_container => {},
+//         _ = container_to_client => {},
+//     }
+//
+//     info!("{} connection closed", service);
+// }

@@ -14,6 +14,12 @@ pub struct ContainerHandle {
     pub tcp_socket: Option<TcpStream>,
 }
 
+impl ContainerHandle {
+    pub fn take_stream(&mut self) -> Option<TcpStream> {
+        self.tcp_socket.take()
+    }
+}
+
 impl Default for ContainerStats {
     fn default() -> Self {
         ContainerStats {
