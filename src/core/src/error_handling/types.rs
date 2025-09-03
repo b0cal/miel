@@ -32,9 +32,41 @@ pub enum SessionError {
 }
 
 #[derive(Debug)]
+pub enum ContainerError {
+    RuntimeNotAvailable,
+    CreationFailed(String),
+    StartFailed(String),
+    IoError(std::io::Error),
+    ProcessError(String),
+    ContainerNotFound(String),
+    ConnectionFailed(String),
+}
+
+#[derive(Debug)]
 pub enum WebError {
     RequestFailed,
     StartFailed(String),
+}
+impl std::fmt::Display for ContainerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContainerError::RuntimeNotAvailable => write!(f, "Container runtime is not available"),
+            ContainerError::CreationFailed(msg) => write!(f, "Container creation failed: {}", msg),
+            ContainerError::StartFailed(msg) => write!(f, "Container start failed: {}", msg),
+            ContainerError::IoError(err) => write!(f, "IO error: {}", err),
+            ContainerError::ProcessError(msg) => write!(f, "Process error: {}", msg),
+            ContainerError::ContainerNotFound(msg) => write!(f, "Container not found: {}", msg),
+            ContainerError::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ContainerError {}
+
+impl From<std::io::Error> for ContainerError {
+    fn from(err: std::io::Error) -> Self {
+        ContainerError::IoError(err)
+    }
 }
 
 #[derive(Debug)]
@@ -45,13 +77,6 @@ pub enum NetworkError {
     ConnectionFailed,
     ServiceDetectionFailed,
     BindFail(std::io::Error),
-}
-
-#[derive(Debug)]
-pub enum ContainerError {
-    RuntimeNotAvailable,
-    CreationFailed(String),
-    StartFailed,
 }
 
 #[derive(Debug)]
