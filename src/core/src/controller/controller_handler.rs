@@ -235,7 +235,7 @@ mod tests {
         debug!("Controller initialized");
 
         debug!("Starting controller...");
-        let (_, rx) = tokio::sync::broadcast::channel(1);
+        let (tx, rx) = tokio::sync::broadcast::channel(1);
         let controller_task = tokio::spawn(async move {
             debug!("Controller.run() is starting...");
             let _ = controller.run(rx).await;
@@ -275,9 +275,9 @@ mod tests {
         debug!("Controller is still running and processing sessions");
 
         debug!("Cleaning up controller task...");
-        controller_task.abort();
-        let _ = controller_task.await;
+        let _ = tx.send(());
 
+        let _ = controller_task.await;
         debug!("=== Complete Controller Flow Test Finished ===");
     }
 }
