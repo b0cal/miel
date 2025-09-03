@@ -1,0 +1,105 @@
+name: Docs
+
+on:
+  workflow_run:
+    workflows: [ "CI" ]
+    types:
+      - completed
+    branches: [ main ]
+  pull_request:
+    paths:
+      - "docs/**"
+      - "src/core/**"
+  push:
+    branches: [ main, dev ]
+    paths:
+      - "docs/**"
+      - "src/core/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs:
+              - 'docs/**'
+
+  lint-docs:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: davidB/rust-cargo-make@v1
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src/core -> target
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/webui/package-lock.json
+
+      - name: Lint Markdown documentation
+        run: cargo make doc-lint
+
+  build-api-docs:
+    name: Build and publish Rust API docs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: davidB/rust-cargo-make@v1
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src/core -> src/core/target
+
+      - name: Build Rust API docs
+        run: cargo make core-doc
+
+      - name: Create API index redirect
+        run: |
+          cat > src/core/target/doc/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Miel API Documentation</title>
+            <meta http-equiv="refresh" content="0; url=miel/">
+            <link rel="canonical" href="miel/">
+          </head>
+          <body>
+            <p>Redirecting to <a href="miel/">Miel API Documentation</a>...</p>
+          </body>
+          </html>
+          EOF
+
+      - name: Publish rustdoc to gh-pages/api
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: src/core/target/doc
+          destination_dir: api
+          keep_files: true
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com

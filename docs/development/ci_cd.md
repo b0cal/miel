@@ -10,6 +10,7 @@ to automate:
 2. Automated builds (Rust core + webUI)
 3. Automated tests
 4. Artifact packaging and release
+5. Documentation build and deployment
 
 The workflows make heavy use of the `cargo-make` system to ensure consistent
 builds across the local development and CI environments.
@@ -22,23 +23,25 @@ builds across the local development and CI environments.
 - **Repeatable builds**: deterministic builds using GitHub runners.
 - **Deployment ready artifacts**: automatically generate tagged binary releases
   on GitHub Releases.
+- **Up-to-date documentation**: automatically build and deploy documentation to GitHub Pages.
 
-## Workflow
+## Workflows Overview
 
-The CI/CD pipeline is implemented in a single workflow file:
+The CI/CD pipeline is implemented using four workflow files:
 
-- **`.github/workflows/ci.yml`** (CI workflow): lint, format, static analysis,
-  tests, builds, and releases. Triggered on pull requests and pushes to `main`
-  and `dev` branches, with special handling for version tags. This workflow does
-  **NOT** run on changes to documentation files only (`/doc` directory).
+- **`.github/workflows/ci.yml`** (CI workflow): Lint, format, static analysis, tests, and builds. Triggered on pull requests and pushes to `main` and `dev` branches (excluding documentation-only changes), and manual dispatch.
+- **`.github/workflows/cd.yml`** (CD workflow): Handles release logic. Triggered after a successful CI run on the `main` branch or via manual dispatch. Checks for a valid semver version in `Cargo.toml` before releasing.
+- **`.github/workflows/docs.yml`** (Docs workflow): Builds and lints documentation. Triggered after CI completes on `main`, on PRs/pushes that touch `docs/` or `src/core/`, and manual dispatch. Uses a path filter to only run jobs if documentation is changed.
+- **`.github/workflows/gh-pages.yml`** (GitHub Pages workflow): Deploys documentation to GitHub Pages. Triggered after the Docs workflow completes on `main`, on pushes to `gh-pages`, and manual dispatch.
 
 ### Workflow Structure
 
+#### CI Workflow (`ci.yml`)
+
 1. **Code quality and audit**
-   - Run linting and formatting checks for Rust, JavaScript and Markdown.
-   - Performs dependency audits with `cargo-audit`.
-   - Perform static analysis with CodeQL for security vulnerabilities in Rust
-     and JavaScript code.
+   - Run linting and formatting checks for Rust, JavaScript, and Markdown.
+   - Perform dependency audits with `cargo-audit`.
+   - (If enabled) Perform static analysis with CodeQL for security vulnerabilities.
 2. **Test**
    - Run Rust unit tests for the core application.
    - Run NodeJS tests for the webUI.
@@ -47,26 +50,27 @@ The CI/CD pipeline is implemented in a single workflow file:
    - Embed webUI assets into the Rust core binary.
    - Produce a single self-contained binary for validation.
    - Upload built binaries as a GitHub Actions artifact.
-4. **Release** (conditional)
-   - Only runs on tagged pushes to the `main` branch:
-     - Downloads the built binary artifact
-     - Publishes the binary to GitHub Releases under the corresponding version
-       tag
 
-### Release Process
+#### CD Workflow (`cd.yml`)
 
-The release process is triggered by **Git tags** following the semantic
-versioning convention:
+- Triggered after a successful CI workflow run on the `main` branch or via manual dispatch.
+- Checks that the version in `src/core/Cargo.toml` is valid semver (MAJOR.MINOR.PATCH).
+- If valid, proceeds with release steps (publishing binaries, etc.).
 
-```
-v<major>.<minor>.<patch>
-e.g., v1.0.0, v1.1.3
-```
+#### Docs Workflow (`docs.yml`)
 
-Tags are used to:
+- Triggered after CI completes on `main`, on PRs/pushes that touch `docs/` or `src/core/`, and manual dispatch.
+- Uses a path filter to only run jobs if documentation is changed.
+- Runs linting and build steps for documentation.
 
-- Automatically trigger the release process
-- Version published binaries on GitHub Releases
+#### GitHub Pages Workflow (`gh-pages.yml`)
+
+- Triggered after the Docs workflow completes on `main`, on pushes to `gh-pages`, and manual dispatch.
+- Deploys the built documentation to GitHub Pages.
+
+## Release Process
+
+The release process is handled by the **CD workflow** (`cd.yml`), which is triggered after a successful CI run on the `main` branch or via manual dispatch. The workflow checks that the version in `src/core/Cargo.toml` follows semantic versioning (MAJOR.MINOR.PATCH). If valid, it proceeds with the release steps, such as publishing binaries to GitHub Releases under the corresponding version tag.
 
 ## Local Testing
 
