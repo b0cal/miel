@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::error_handling::types::StorageError;
-use crate::storage::storage::Storage;
+use crate::storage::storage_trait::Storage;
 use crate::storage::types::{CaptureArtifacts, Direction, Session, SessionFilter, StdioStream};
 use chrono::{DateTime, Utc};
 use log::{debug, error, info};

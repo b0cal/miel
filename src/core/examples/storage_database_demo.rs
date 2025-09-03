@@ -4,7 +4,7 @@ use log::{info, warn};
 use miel::session_management::SessionStatus;
 use miel::storage::database_storage::DatabaseStorage;
 use miel::storage::file_storage::FileStorage;
-use miel::storage::storage::Storage;
+use miel::storage::storage_trait::Storage;
 use miel::storage::types::{CaptureArtifacts, Session};
 use std::env;
 use std::fs;
