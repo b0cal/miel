@@ -91,11 +91,11 @@ pub struct ServiceConfig {
 impl Default for ServiceConfig {
     fn default() -> Self {
         Self {
-            name: "unkown".to_string(),
-            port: 0,
+            name: "test_service".to_string(),
+            port: 8000,
             protocol: Protocol::TCP,
-            container_image: "unknown".to_string(),
-            enabled: false,
+            container_image: "container_image".to_string(),
+            enabled: true,
             header_patterns: vec![],
             banner_response: None,
         }

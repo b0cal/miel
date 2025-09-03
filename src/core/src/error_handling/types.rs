@@ -32,19 +32,6 @@ pub enum SessionError {
 }
 
 #[derive(Debug)]
-pub enum WebError {
-    RequestFailed,
-    StartFailed(String),
-}
-
-#[derive(Debug)]
-pub enum NetworkError {
-    ConnectionFailed,
-    ServiceDetectionFailed,
-    BindFail(std::io::Error),
-}
-
-#[derive(Debug)]
 pub enum ContainerError {
     RuntimeNotAvailable,
     CreationFailed(String),
@@ -55,6 +42,11 @@ pub enum ContainerError {
     ConnectionFailed(String),
 }
 
+#[derive(Debug)]
+pub enum WebError {
+    RequestFailed,
+    StartFailed(String),
+}
 impl std::fmt::Display for ContainerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -75,6 +67,16 @@ impl From<std::io::Error> for ContainerError {
     fn from(err: std::io::Error) -> Self {
         ContainerError::IoError(err)
     }
+}
+
+#[derive(Debug)]
+pub enum NetworkError {
+    BindError(std::io::Error),
+    ChannelFailed,
+    SockError(std::io::Error),
+    ConnectionFailed,
+    ServiceDetectionFailed,
+    BindFail(std::io::Error),
 }
 
 #[derive(Debug)]

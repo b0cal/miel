@@ -34,7 +34,7 @@ pub struct Config {
     ///
     /// This field contains the configuration for all the services needing to be exposed through
     /// containers
-    /// It is not exposed as a command-line argument
+    /// It is not exposed as a command-line argument     
     ///
     /// Currently uses `#[arg(skip)]` to exclude from command-line parsing
     #[arg(skip)]
@@ -148,7 +148,7 @@ impl Config {
     ///
     /// # Example
     /// ```no_run
-    /// let config = miel::config::Config::from_file("config.toml".as_ref())
+    /// let config = miel::configuration::config::Config::from_file("config.toml".as_ref())
     ///     .expect("Failed to load configuration");
     /// println!("Loaded {} services", config.services.len());
     /// ```
