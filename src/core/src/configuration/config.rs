@@ -679,7 +679,6 @@ mod tests {
         }
     }
 }
-
 #[cfg(test)]
 mod tests_from_file {
     use super::*;
