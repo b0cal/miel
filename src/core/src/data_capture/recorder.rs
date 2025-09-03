@@ -40,19 +40,20 @@
 //! # }
 //! ```
 
+use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use log::{debug, info};
 use tokio::net::TcpStream;
 use uuid::Uuid;
-use log::{debug, info};
 
-use crate::error_handling::types::{CaptureError};
+use crate::error_handling::types::CaptureError;
 
+use super::stdio_capture::StdioCapture;
 use super::storage::Storage;
 use super::tcp_capture::TcpCapture;
 use super::types::CaptureArtifacts;
-use super::stdio_capture::StdioCapture;
 
 /// Orchestrates network and stdio capture for a single session.
 ///
@@ -136,6 +137,19 @@ impl StreamRecorder {
         cap.capture_pty(pty_master)
     }
 
+    /// Parse a unified activity log file and append its STDIN/STDOUT/STDERR
+    /// content to this recorder's stdio buffers.
+    pub fn parse_stdio_log_from_file<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+    ) -> Result<(), CaptureError> {
+        let cap = self
+            .stdio_capture
+            .get_or_insert_with(|| Arc::new(StdioCapture::new(self.session_id)))
+            .clone();
+        cap.as_ref().capture_activity_log_from_path(path)
+    }
+
     /// Aggregates TCP and stdio buffers into [`CaptureArtifacts`], computes
     /// totals and duration, persists them via [`Storage`], and returns the
     /// artifacts to the caller.
@@ -154,8 +168,8 @@ impl StreamRecorder {
             (Vec::new(), Vec::new(), Vec::new(), Vec::new())
         };
 
-        let total_bytes: u64 = (c2s.len() + s2c.len() + stdin.len() + stdout.len() + stderr.len())
-            as u64;
+        let total_bytes: u64 =
+            (c2s.len() + s2c.len() + stdin.len() + stdout.len() + stderr.len()) as u64;
         let duration = Utc::now() - self.start_time;
 
         info!(
@@ -193,10 +207,10 @@ impl StreamRecorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use std::sync::Mutex as StdMutex;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
-    use std::sync::Arc;
 
     use crate::data_capture::storage::Storage;
     use crate::data_capture::types::Direction;
@@ -208,15 +222,14 @@ mod tests {
 
     impl MemStorage {
         fn new() -> Self {
-            Self { inner: StdMutex::new(None) }
+            Self {
+                inner: StdMutex::new(None),
+            }
         }
     }
 
     impl Storage for MemStorage {
-        fn save_capture_artifacts(
-            &self,
-            artifacts: &CaptureArtifacts,
-        ) -> Result<(), StorageError> {
+        fn save_capture_artifacts(&self, artifacts: &CaptureArtifacts) -> Result<(), StorageError> {
             *self.inner.lock().unwrap() = Some(artifacts.clone());
             Ok(())
         }
@@ -254,8 +267,7 @@ mod tests {
 
         let rec2 = Arc::clone(&recorder);
         let proxy = tokio::spawn(async move {
-            rec2
-                .start_tcp_proxy(client_server_side, container_server_side)
+            rec2.start_tcp_proxy(client_server_side, container_server_side)
                 .await
         });
 
@@ -295,7 +307,7 @@ mod tests {
         drop(container_inside);
         drop(client_outside);
 
-        // Wait proxy completion with timeout to avoid hangs in CI
+        // Wait for proxy completion with timeout to avoid hangs in CI
         let res = tokio::time::timeout(std::time::Duration::from_secs(2), proxy).await;
         match res {
             Ok(join_res) => {

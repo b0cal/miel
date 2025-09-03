@@ -493,6 +493,7 @@ impl ContainerManager {
             "usr/bin",
             "usr/local",
             "usr/local/bin",
+            "usr/local/etc",
             "sbin",
             "usr/sbin",
             "usr/libexec",
@@ -601,19 +602,13 @@ impl ContainerManager {
         host_port: u16,
         container_id: &str,
     ) -> String {
-        // Get the log file path for this container (inside the container, the bind mount makes it accessible)
         let log_path = format!("/tmp/miel-logs/container-{}-activity.log", container_id);
-
-        let command = match service_config.name.as_str() {
+        match service_config.name.as_str() {
             "ssh" => {
                 let p = host_port;
-                // Enhanced SSH command with comprehensive logging for honeypot purposes
                 format!(
                     r#"
-                    # Create SSH host keys
                     /usr/bin/ssh-keygen -A >/dev/null 2>&1 || /bin/ssh-keygen -A >/dev/null 2>&1;
-
-                    # Create a custom sshd_config for enhanced logging
                     cat > /etc/ssh/sshd_config << 'EOF'
 Port {p}
 ListenAddress 127.0.0.1
@@ -622,240 +617,143 @@ HostKey /etc/ssh/ssh_host_rsa_key
 HostKey /etc/ssh/ssh_host_ecdsa_key
 HostKey /etc/ssh/ssh_host_ed25519_key
 UsePrivilegeSeparation no
-KeyRegenerationInterval 3600
-ServerKeyBits 1024
-SyslogFacility AUTH
 LogLevel VERBOSE
-LoginGraceTime 600
 PermitRootLogin no
-StrictModes yes
-RSAAuthentication yes
-PubkeyAuthentication yes
 PasswordAuthentication yes
-PermitEmptyPasswords no
-ChallengeResponseAuthentication no
 UsePAM no
-X11Forwarding no
-PrintMotd no
-PrintLastLog yes
-TCPKeepAlive yes
-AcceptEnv LANG LC_*
 Subsystem sftp /usr/libexec/openssh/sftp-server
-UseDNS no
 PidFile /var/run/sshd/sshd.pid
 EOF
 
-                    # Create a comprehensive logging shell for honeypot purposes
                     cat > /usr/local/bin/logged_shell << 'EOF'
 #!/bin/sh
-# Comprehensive honeypot shell logger - logs EVERYTHING including outputs
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S UTC')
-echo "[$TIMESTAMP] SSH session started for user: $USER (PID: $$)" >> {log_path}
-echo "[$TIMESTAMP] [SSH-SESSION] Interactive shell session started" >> {log_path}
-
-# Override PATH to intercept ALL command executions
+TS=$(date '+%Y-%m-%d %H:%M:%S UTC')
+echo "[$TS] [SSH-SESSION] Interactive shell session started" >> {log_path}
 export PATH="/tmp:$PATH"
-
-# Create wrapper scripts for common binaries to log commands AND their outputs
 for cmd in ls cat pwd whoami id ps top netstat ss w who uname find grep awk sed tail head more less vi nano wget curl chmod chown mkdir rmdir rm cp mv ln tar gzip gunzip file which env printenv history mount df du free uptime lscpu lsblk ifconfig ip route iptables nmap nc telnet ping traceroute dig nslookup; do
-    if [ -x "/bin/$cmd" ] || [ -x "/usr/bin/$cmd" ] || [ -x "/sbin/$cmd" ] || [ -x "/usr/sbin/$cmd" ]; then
-        cat > "/tmp/$cmd" << CMD_EOF
+  if [ -x "/bin/$cmd" ] || [ -x "/usr/bin/$cmd" ] || [ -x "/sbin/$cmd" ] || [ -x "/usr/sbin/$cmd" ]; then
+    cat > "/tmp/$cmd" << CMD_EOF
 #!/bin/sh
-TIMESTAMP=\$(date '+%Y-%m-%d %H:%M:%S UTC')
-echo "[\$TIMESTAMP] [SSH-CMD] $cmd \$*" >> {log_path}
-
-# Create temporary files for capturing output
-OUTPUT_FILE="/tmp/cmd_output_\$\$"
-ERROR_FILE="/tmp/cmd_error_\$\$"
-
-# Find the real binary and execute it, capturing output
-if [ -x "/bin/$cmd" ]; then
-    "/bin/$cmd" "\$@" > "\$OUTPUT_FILE" 2> "\$ERROR_FILE"
-elif [ -x "/usr/bin/$cmd" ]; then
-    "/usr/bin/$cmd" "\$@" > "\$OUTPUT_FILE" 2> "\$ERROR_FILE"
-elif [ -x "/sbin/$cmd" ]; then
-    "/sbin/$cmd" "\$@" > "\$OUTPUT_FILE" 2> "\$ERROR_FILE"
-elif [ -x "/usr/sbin/$cmd" ]; then
-    "/usr/sbin/$cmd" "\$@" > "\$OUTPUT_FILE" 2> "\$ERROR_FILE"
-else
-    echo "$cmd: command not found" > "\$ERROR_FILE"
-fi
-
-EXIT_CODE=\$?
-TIMESTAMP=\$(date '+%Y-%m-%d %H:%M:%S UTC')
-
-# Log the output if there is any
-if [ -s "\$OUTPUT_FILE" ]; then
-    echo "[\$TIMESTAMP] [SSH-OUTPUT] $cmd stdout:" >> {log_path}
-    while IFS= read -r line; do
-        echo "[\$TIMESTAMP] [SSH-OUTPUT] \$line" >> {log_path}
-    done < "\$OUTPUT_FILE"
-fi
-
-# Log any errors
-if [ -s "\$ERROR_FILE" ]; then
-    echo "[\$TIMESTAMP] [SSH-ERROR] $cmd stderr:" >> {log_path}
-    while IFS= read -r line; do
-        echo "[\$TIMESTAMP] [SSH-ERROR] \$line" >> {log_path}
-    done < "\$ERROR_FILE"
-fi
-
-# Log the exit code
-echo "[\$TIMESTAMP] [SSH-EXIT] $cmd exited with code: \$EXIT_CODE" >> {log_path}
-
-# Display output to user using REAL binaries to avoid recursion
-if [ -s "\$OUTPUT_FILE" ]; then
-    if [ -x "/bin/cat" ]; then
-        "/bin/cat" "\$OUTPUT_FILE"
-    elif [ -x "/usr/bin/cat" ]; then
-        "/usr/bin/cat" "\$OUTPUT_FILE"
-    fi
-fi
-
-if [ -s "\$ERROR_FILE" ]; then
-    if [ -x "/bin/cat" ]; then
-        "/bin/cat" "\$ERROR_FILE" >&2
-    elif [ -x "/usr/bin/cat" ]; then
-        "/usr/bin/cat" "\$ERROR_FILE" >&2
-    fi
-fi
-
-# Clean up temporary files using real rm to avoid recursion
-if [ -x "/bin/rm" ]; then
-    "/bin/rm" -f "\$OUTPUT_FILE" "\$ERROR_FILE" 2>/dev/null
-elif [ -x "/usr/bin/rm" ]; then
-    "/usr/bin/rm" -f "\$OUTPUT_FILE" "\$ERROR_FILE" 2>/dev/null
-fi
-
-exit \$EXIT_CODE
+TS=\$(date '+%Y-%m-%d %H:%M:%S UTC')
+echo "[\$TS] [SSH] [STDIN] $cmd \$*" >> {log_path}
+OUT="/tmp/cmd_out_\$\$"; ERR="/tmp/cmd_err_\$\$"
+if [ -x "/bin/$cmd" ]; then "/bin/$cmd" "\$@" >"\$OUT" 2>"\$ERR";
+elif [ -x "/usr/bin/$cmd" ]; then "/usr/bin/$cmd" "\$@" >"\$OUT" 2>"\$ERR";
+elif [ -x "/sbin/$cmd" ]; then "/sbin/$cmd" "\$@" >"\$OUT" 2>"\$ERR";
+elif [ -x "/usr/sbin/$cmd" ]; then "/usr/sbin/$cmd" "\$@" >"\$OUT" 2>"\$ERR";
+else echo "$cmd: command not found" >"\$ERR"; fi
+TS=\$(date '+%Y-%m-%d %H:%M:%S UTC')
+if [ -s "\$OUT" ]; then while IFS= read -r l; do echo "[\$TS] [SSH] [STDOUT] \$l" >> {log_path}; done < "\$OUT"; fi
+if [ -s "\$ERR" ]; then while IFS= read -r l; do echo "[\$TS] [SSH] [STDERR] \$l" >> {log_path}; done < "\$ERR"; fi
+[ -s "\$OUT" ] && ( [ -x "/bin/cat" ] && "/bin/cat" "\$OUT" || [ -x "/usr/bin/cat" ] && "/usr/bin/cat" "\$OUT" )
+[ -s "\$ERR" ] && ( [ -x "/bin/cat" ] && "/bin/cat" "\$ERR" >&2 || [ -x "/usr/bin/cat" ] && "/usr/bin/cat" "\$ERR" >&2 )
+( [ -x "/bin/rm" ] && "/bin/rm" -f "\$OUT" "\$ERR" ) || ( [ -x "/usr/bin/rm" ] && "/usr/bin/rm" -f "\$OUT" "\$ERR" )
 CMD_EOF
-        chmod +x "/tmp/$cmd"
-    fi
+    chmod +x "/tmp/$cmd"
+  fi
 done
-
-# Create a special wrapper for interactive commands that are harder to capture
 for cmd in bash sh; do
-    if [ -x "/bin/$cmd" ]; then
-        cat > "/tmp/$cmd" << SHELL_EOF
+  if [ -x "/bin/$cmd" ]; then
+    cat > "/tmp/$cmd" << SHELL_EOF
 #!/bin/sh
-TIMESTAMP=\$(date '+%Y-%m-%d %H:%M:%S UTC')
-echo "[\$TIMESTAMP] [SSH-CMD] $cmd \$*" >> {log_path}
-echo "[\$TIMESTAMP] [SSH-WARNING] Interactive shell $cmd started - some commands may not be fully logged" >> {log_path}
+TS=\$(date '+%Y-%m-%d %H:%M:%S UTC')
+echo "[\$TS] [SSH] [STDIN] $cmd \$*" >> {log_path}
 exec "/bin/$cmd" "\$@"
 SHELL_EOF
-        chmod +x "/tmp/$cmd"
-    fi
+    chmod +x "/tmp/$cmd"
+  fi
 done
-
-# Set up PS1 with command logging via DEBUG trap (bash feature) for comprehensive coverage
-# If bash is available, use it for better command tracking
 if [ -x "/bin/bash" ]; then
-    export PS1='miel@honeypot:\w$ '
-    exec /bin/bash --rcfile <(echo '
-        set -o functrace
-        shopt -s extdebug
-
-        # Function to log commands with output capture
-        log_bash_command() {{
-            local cmd="$1"
-            local timestamp=$(date "+%Y-%m-%d %H:%M:%S UTC")
-
-            # Skip logging our own logging commands and temp file operations to avoid recursion
-            case "$cmd" in
-                *{log_path}*|*"date "*|*"echo "*timestamp*|*log_bash_command*|*"/tmp/cmd_output_"*|*"/tmp/cmd_error_"*|*"/bin/cat "*|*"/usr/bin/cat "*|*"/bin/rm "*|*"/usr/bin/rm "*)
-                    return
-                    ;;
-            esac
-
-            echo "[$timestamp] [SSH-CMD] $cmd" >> {log_path}
-        }}
-
-        # Set up DEBUG trap
-        trap '\''log_bash_command "$BASH_COMMAND"'\'' DEBUG
-        export PS1="miel@honeypot:\w$ "
-    ')
+  # Provide log path to the rcfile without risking premature expansion
+  export MIEL_LOG_PATH="{log_path}"
+  # Install a literal rcfile that logs each command via DEBUG trap
+  cat >/usr/local/etc/miel_bashrc <<'BASHRC'
+log_bash_command() {{
+  local c="$BASH_COMMAND"
+  local TS="$(date '+%Y-%m-%d %H:%M:%S UTC')"
+  printf '[%s] [SSH] [STDIN] %s\n' "$TS" "$c" >> "$MIEL_LOG_PATH"
+}}
+trap 'log_bash_command' DEBUG
+BASHRC
+  exec /bin/bash --rcfile /usr/local/etc/miel_bashrc
 else
-    # Fallback to sh with custom PS1
-    export PS1='miel@honeypot:$PWD$ '
-    exec /bin/sh
+  exec /bin/sh
 fi
 EOF
-                    chmod +x /usr/local/bin/logged_shell
 
-                    # Update the shell in passwd to use our logged shell for the miel user
+                    # Make sure the shell is executable and allowed by sshd
+                    chmod 755 /usr/local/bin/logged_shell
+                    chown root:root /usr/local/bin/logged_shell 2>/dev/null || true
+                    if [ ! -f /etc/shells ]; then echo "/bin/sh" > /etc/shells; fi
+                    if ! grep -q "/usr/local/bin/logged_shell" /etc/shells 2>/dev/null; then echo "/usr/local/bin/logged_shell" >> /etc/shells; fi
+
                     sed -i 's|miel:x:1000:1000:miel User:/home/miel:/bin/sh|miel:x:1000:1000:miel User:/home/miel:/usr/local/bin/logged_shell|' /etc/passwd
-
-                    # Start sshd with our custom config
-                    exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config 2>&1 | while IFS= read -r line; do
-                        echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [SSHD] $line" >> {log_path}
-                    done
-                    "#,
+                    exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config 2>&1 | while IFS= read -r l; do echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [SSHD] $l" >> {log_path}; done
+                "#,
                     p = p,
                     log_path = log_path
                 )
             }
             "http" => {
                 let p = host_port;
-                // Minimal HTTP server that just returns 200 OK
                 format!(
                     r#"
-                    # Set PATH to include all common Python locations
                     export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+                    PY="/usr/bin/python3"; [ -x "$PY" ] || PY="/usr/local/bin/python3"; [ -x "$PY" ] || PY="/bin/python3";
+                    if [ ! -x "$PY" ]; then echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [HTTP] [STDERR] Python 3 not found" >> {log_path}; exit 1; fi
+                    cat >/usr/local/bin/http_server.py <<'PYEOF'
+import socket, threading, datetime
 
-                    # Try to find python3 in common locations and start minimal HTTP server
-                    PYTHON3=""
-                    for py in /usr/bin/python3 /usr/local/bin/python3 /bin/python3; do
-                        if [ -x "$py" ]; then
-                            PYTHON3="$py"
-                            break
-                        fi
-                    done
+LOG_PATH = r"{log_path}"
+PORT = {p}
 
-                    if [ -z "$PYTHON3" ]; then
-                        echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [HTTP-ERROR] Python 3 not found in any standard location" >> {log_path}
-                        exit 1
-                    fi
-
-                    echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [HTTP-INFO] Starting minimal HTTP server with Python 3 at: $PYTHON3" >> {log_path}
-
-                    # Start minimal HTTP server that just returns 200 OK
-                    exec "$PYTHON3" -c "
-import socket
-import threading
-import datetime
-
-def handle_request(conn, addr):
+def log(line):
     try:
-        data = conn.recv(1024).decode('utf-8')
-        # Simple 200 OK response
-        response = 'HTTP/1.1 200 OK\\r\\nContent-Length: 2\\r\\n\\r\\nOK'
-        conn.send(response.encode('utf-8'))
-
-        # Log the request
-        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-        with open('{log_path}', 'a') as f:
-            f.write('[%s] [HTTP] Request from %s\\n' % (timestamp, addr[0]))
+        with open(LOG_PATH, 'a') as f:
+            f.write(line + "\n")
             f.flush()
-    except:
+    except Exception:
         pass
+
+def handle(conn, addr):
+    try:
+        data = conn.recv(4096)
+        line = data.decode('utf-8', errors='ignore').splitlines()[0] if data else ''
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        if line:
+            log('[%s] [HTTP] [STDIN] %s' % (ts, line))
+        try:
+            conn.send(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+        except Exception:
+            pass
+    except Exception as e:
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        log('[%s] [HTTP] [STDERR] %s' % (ts, str(e)))
     finally:
+        try:
+            conn.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
         conn.close()
 
-# Create and bind socket
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(('127.0.0.1', {p}))
-server.listen(5)
+def main():
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", PORT))
+    srv.listen(50)
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    log('[%s] [HTTP] [STDOUT] Server listening on 127.0.0.1:%d' % (ts, PORT))
+    while True:
+        conn, addr = srv.accept()
+        t = threading.Thread(target=handle, args=(conn, addr), daemon=True)
+        t.start()
 
-print('HTTP server listening on 127.0.0.1:{p}')
-
-while True:
-    conn, addr = server.accept()
-    threading.Thread(target=handle_request, args=(conn, addr)).start()
-" 2>&1 | while IFS= read -r line; do
-    echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [HTTP-SERVER] $line" >> {log_path}
-done
-                    "#,
+if __name__ == "__main__":
+    main()
+PYEOF
+                    chmod +x /usr/local/bin/http_server.py
+                    exec "$PY" /usr/local/bin/http_server.py
+                "#,
                     p = p,
                     log_path = log_path
                 )
@@ -863,22 +761,12 @@ done
             _ => {
                 format!(
                     r#"
-                    # Generic service with logging
-                    exec /bin/sh /usr/bin/service 2>&1 | while IFS= read -r line; do
-                        echo "[$(date '+%Y-%m-%d %H:%M:%S UTC")] [SERVICE] $line" >> {log_path}
-                    done
-                    "#,
+                    exec /bin/sh /usr/bin/service 2>&1 | while IFS= read -r l; do echo "[$(date '+%Y-%m-%d %H:%M:%S UTC')] [SERVICE] $l" >> {log_path}; done
+                "#,
                     log_path = log_path
                 )
             }
-        };
-
-        debug!(
-            "Generated enhanced service command with logging for {}: {}",
-            service_config.name,
-            command.lines().take(3).collect::<Vec<_>>().join(" ")
-        );
-        command
+        }
     }
 
     /// Creates a unified log file to capture all shell activity from the container.
