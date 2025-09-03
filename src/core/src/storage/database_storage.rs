@@ -23,8 +23,13 @@ impl DatabaseStorage {
     /// Default database filename used in the application's working directory
     const DEFAULT_DB_FILE: &'static str = "miel.sqlite3";
 
-    /// Create or open the database in the current working directory with the default filename
+    /// Create or open the database using an env override if provided, otherwise in the current working directory
     pub fn new() -> Result<Self, StorageError> {
+        if let Ok(path_str) = env::var("MIEL_DB_PATH") {
+            let path = Path::new(&path_str);
+            if let Some(parent) = path.parent() { std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?; }
+            return Self::new_file(path);
+        }
         let cwd = env::current_dir().map_err(|_| StorageError::ConnectionFailed)?;
         let path = cwd.join(Self::DEFAULT_DB_FILE);
         Self::new_file(path)

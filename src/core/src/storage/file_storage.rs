@@ -34,6 +34,15 @@ impl FileStorage {
         })
     }
 
+    /// Construct FileStorage using env var MIEL_FILE_STORAGE_DIR if set, otherwise current directory.
+    pub fn new_default() -> Result<Self, StorageError> {
+        if let Ok(dir) = std::env::var("MIEL_FILE_STORAGE_DIR") {
+            return Self::new(PathBuf::from(dir));
+        }
+        let cwd = std::env::current_dir().map_err(|_| StorageError::ReadFailed)?;
+        Self::new(cwd)
+    }
+
     fn sessions_dir(&self) -> PathBuf { self.base_path.join("sessions") }
     fn interactions_dir(&self) -> PathBuf { self.base_path.join("interactions") }
     fn artifacts_dir_for(&self, id: Uuid) -> PathBuf { self.artifacts_path.join(id.to_string()) }
