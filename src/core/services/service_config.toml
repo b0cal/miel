@@ -1,7 +1,0 @@
-name = "http"
-port = 8000
-protocol = "TCP"
-container_image = "container_image"
-header_patterns = ["HTTP/1.1"]
-banner_response = "Welcome to our webservice"
-
