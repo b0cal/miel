@@ -112,7 +112,7 @@ pub struct NetworkListener {
     /// Connection filtering component for security and access control
     connection_filter: ConnectionFilter,
 
-    ///Channel sender for broadcasting shutdown order
+    /// Channel sender for broadcasting shutdown order
     shutdown_tx: Option<broadcast::Sender<()>>,
 
     /// Handles on the listeners to handle shutdown comprehensively

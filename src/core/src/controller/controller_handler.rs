@@ -98,7 +98,7 @@ impl Controller {
 
         if let Some(listener) = &mut self.listener {
             if let Err(e) = listener.shutdown().await {
-                error!("Failed to shutdown NewtorkListener gracefully: {:?}", e);
+                error!("Failed to shutdown NetworkListener gracefully: {:?}", e);
             }
         }
 

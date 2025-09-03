@@ -68,7 +68,7 @@ async fn main() {
 
     let controller_handle = tokio::spawn(async move {
         if let Err(e) = controller.run(shutdown_rx).await {
-            error!("Error occured in the controller process: {:?}", e);
+            error!("Error occurred in the controller process: {:?}", e);
         }
     });
 
@@ -76,7 +76,7 @@ async fn main() {
 
     match signal::ctrl_c().await {
         Ok(()) => {
-            info!("Received Ctrl+C signal, intiating graceful shutdown...");
+            info!("Received Ctrl+C signal, initiating graceful shutdown...");
         }
         Err(e) => {
             error!("Unable to listen for shutdown signal: {}", e);
