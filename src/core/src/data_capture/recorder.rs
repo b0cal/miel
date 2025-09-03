@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use tokio::net::TcpStream;
 use uuid::Uuid;
+use log::{debug, info};
 
 use crate::error_handling::types::{CaptureError, StorageError};
 
@@ -21,6 +22,7 @@ pub struct StreamRecorder {
 
 impl StreamRecorder {
     pub fn new(session_id: Uuid, storage: Arc<dyn Storage>) -> Self {
+        debug!("[{}] StreamRecorder created", session_id);
         Self {
             session_id,
             tcp_capture: Arc::new(TcpCapture::new(session_id)),
@@ -41,6 +43,7 @@ impl StreamRecorder {
     }
 
     pub fn start_stdio_capture(&mut self, pty_master: std::fs::File) -> Result<(), CaptureError> {
+        debug!("[{}] Starting stdio capture snapshot", self.session_id);
         let cap = self
             .stdio_capture
             .get_or_insert_with(|| StdioCapture::new(self.session_id));
@@ -59,6 +62,17 @@ impl StreamRecorder {
         let total_bytes: u64 = (c2s.len() + s2c.len() + stdin.len() + stdout.len() + stderr.len())
             as u64;
         let duration = Utc::now() - self.start_time;
+
+        info!(
+            "[{}] Finalized capture: total_bytes={}, tcp_c2s={}, tcp_s2c={}, stdout={}, stderr={}, duration={:?}",
+            self.session_id,
+            total_bytes,
+            c2s.len(),
+            s2c.len(),
+            stdout.len(),
+            stderr.len(),
+            duration
+        );
 
         let artifacts = CaptureArtifacts {
             session_id: self.session_id,

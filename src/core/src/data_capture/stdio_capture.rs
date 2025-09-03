@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+use log::{debug, trace};
 
 use crate::error_handling::types::CaptureError;
 use super::types::StdioStream;
@@ -18,6 +19,7 @@ pub struct StdioCapture {
 
 impl StdioCapture {
     pub fn new(session_id: Uuid) -> Self {
+        debug!("[{}] StdioCapture created", session_id);
         Self {
             session_id,
             stdin_data: Mutex::new(Vec::new()),
@@ -28,19 +30,32 @@ impl StdioCapture {
     }
 
     pub fn capture_pty(&self, mut pty_master: std::fs::File) -> Result<(), CaptureError> {
+        debug!("[{}] StdioCapture snapshot start", self.session_id);
         let mut buf = [0u8; 4096];
         match pty_master.read(&mut buf) {
-            Ok(0) => {}
+            Ok(0) => {
+                trace!("[{}] PTY read returned EOF", self.session_id);
+            }
             Ok(n) => {
                 self.stdout_data.lock().unwrap().extend_from_slice(&buf[..n]);
                 self.timestamps
                     .lock()
                     .unwrap()
                     .push((Utc::now(), StdioStream::Stdout, n));
+                let preview = &buf[..std::cmp::min(n, 64)];
+                trace!(
+                    "[{}] captured STDOUT {} bytes: {}{}",
+                    self.session_id,
+                    n,
+                    String::from_utf8_lossy(preview),
+                    if n > 64 { " ..." } else { "" }
+                );
             }
             Err(e) => {
                 if e.kind() != io::ErrorKind::WouldBlock {
                     return Err(CaptureError::StdioError(e));
+                } else {
+                    trace!("[{}] PTY WouldBlock on snapshot", self.session_id);
                 }
             }
         }
@@ -62,4 +77,3 @@ impl StdioCapture {
         (i, o, e, t)
     }
 }
-
