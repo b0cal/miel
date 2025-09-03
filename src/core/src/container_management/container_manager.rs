@@ -9,7 +9,7 @@ use tokio::net::TcpStream;
 use tokio::process::Command;
 use uuid::Uuid;
 
-use crate::configuration::service_config::ServiceConfig;
+use crate::configuration::types::ServiceConfig;
 use crate::container_management::types::{ContainerHandle, ContainerStats, Runtime};
 use crate::error_handling::types::ContainerError;
 
