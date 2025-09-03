@@ -47,8 +47,10 @@
 //!     // Bind to the configured service
 //!     listener.bind_services(&services)?;
 //!
+//!     let copy = listener.extract_for_listening();
+//!
 //!     // Start listening for connections
-//!     listener.start_listening(Ipv4Addr::new(0, 0, 0, 0)).await?;
+//!     NetworkListener::start_listening(copy, Ipv4Addr::new(0, 0, 0, 0)).await?;
 //!
 //!     Ok(())
 //! }
@@ -155,28 +157,21 @@ impl NetworkListener {
         }
     }
 
-    pub fn extract_for_listening(
-        &mut self,
-    ) -> (
-        HashMap<u16, TcpSocket>,
-        Sender<SessionRequest>,
-        ServiceDetector,
-        ConnectionFilter,
-        broadcast::Sender<()>,
-    ) {
+    pub fn extract_for_listening(&mut self) -> Self {
         let listeners = std::mem::take(&mut self.listeners);
         let session_tx = self.session_tx.clone();
         let service_detector = self.service_detector.clone();
         let connection_filter = self.connection_filter.clone();
         let shutdown_tx = self.shutdown_tx.as_ref().unwrap().clone();
 
-        (
+        Self {
             listeners,
             session_tx,
             service_detector,
             connection_filter,
-            shutdown_tx,
-        )
+            shutdown_tx: Some(shutdown_tx),
+            listener_handles: Vec::new(),
+        }
     }
 
     /// Binds TCP sockets to the ports specified in the service configurations.
@@ -275,6 +270,7 @@ impl NetworkListener {
     /// use miel::network::network_listener::NetworkListener;
     /// use miel::error_handling::types::NetworkError;
     /// use miel::configuration::types::ServiceConfig;
+    /// use std::net::Ipv4Addr;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), NetworkError> {
@@ -282,24 +278,18 @@ impl NetworkListener {
     ///     let mut listener = NetworkListener::new(tx);
     ///
     ///     listener.bind_services(&[ServiceConfig::default()])?;
-    ///     listener.start_listening().await?;
+    ///     let copy = listener.extract_for_listening();
+    ///     NetworkListener::start_listening(copy, Ipv4Addr::new(127, 0, 0, 1));
     ///
     ///     Ok(())
     /// }
     /// ```
-    pub async fn start_listening(
-        mut listeners: HashMap<u16, TcpSocket>,
-        bind_addr: Ipv4Addr,
-        session_tx: Sender<SessionRequest>,
-        service_detector: ServiceDetector,
-        connection_filter: ConnectionFilter,
-        shutdown_tx: broadcast::Sender<()>,
-    ) -> Result<(), NetworkError> {
+    pub async fn start_listening(mut copy: Self, bind_addr: Ipv4Addr) -> Result<(), NetworkError> {
         let mut listener_handles = Vec::new();
 
         info!("=== Service listeners configuration ===");
         // Bind all sockets and create listeners
-        for (port, socket) in listeners.drain() {
+        for (port, socket) in copy.listeners.drain() {
             info!("Binding socket to address {} with port {}", bind_addr, port);
 
             // Bind socket to the bind_address with port specified in the ServiceConfig
@@ -322,10 +312,10 @@ impl NetworkListener {
             };
 
             // Clone components used for the async listening session
-            let session_tx_clone = session_tx.clone();
-            let service_detector_clone = service_detector.clone();
-            let connection_filter_clone = connection_filter.clone();
-            let shutdown_rx_clone = shutdown_tx.subscribe();
+            let session_tx_clone = copy.session_tx.clone();
+            let service_detector_clone = copy.service_detector.clone();
+            let connection_filter_clone = copy.connection_filter.clone();
+            let shutdown_rx_clone = copy.shutdown_tx.as_ref().unwrap().subscribe();
 
             let handle = tokio::spawn(async move {
                 Self::listen_on_port(
@@ -536,22 +526,12 @@ mod tests {
             ..Default::default()
         };
         let _result = network_listener.bind_services(&[service_config]);
-        let (listeners, session_tx, service_detector, connection_filter, shutdown_tx) =
-            network_listener.extract_for_listening();
+        let copy = network_listener.extract_for_listening();
 
         // Start listening in a separate task with timeout since it runs indefinitely
         let bind_addr = Ipv4Addr::new(127, 0, 0, 1);
-        let listening_task = tokio::spawn(async move {
-            NetworkListener::start_listening(
-                listeners,
-                bind_addr,
-                session_tx,
-                service_detector,
-                connection_filter,
-                shutdown_tx,
-            )
-            .await
-        });
+        let listening_task =
+            tokio::spawn(async move { NetworkListener::start_listening(copy, bind_addr).await });
 
         // Give it a moment to start binding
         time::sleep(time::Duration::from_millis(100)).await;
