@@ -2,16 +2,12 @@ name: Docs
 
 on:
   workflow_run:
-    workflows: [ "CI" ]
+    workflows: [ "CD" ]
     types:
       - completed
     branches: [ main ]
-  pull_request:
-    paths:
-      - "docs/**"
-      - "src/core/**"
   push:
-    branches: [ main, dev ]
+    branches: [ main ]
     paths:
       - "docs/**"
       - "src/core/**"
