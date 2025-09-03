@@ -66,7 +66,7 @@ package "Configuration" {
 package "Core" {
   struct Controller {
     - config: Config
-    - listener: NetworkListener
+    - listener: Option<NetworkListener>
     - session_manager: SessionManager
     - container_manager: ContainerManager
     - storage: Box<dyn Storage>
@@ -87,10 +87,10 @@ package "Network" {
     --
     + new(session_tx: mpsc::Sender<SessionRequest) -> Self
     + bind_services(&mut self, services: &[ServiceConfig]) -> Result<(), NetworkError>
-    + start_listening(&mut self) -> Result<(), NetworkError>
+    + start_listening(&mut self, bind_addr: Ipv4Addr) -> Result<(), NetworkError>
     + shutdown() -> Result<(), NetworkError>
     - listen_on_port(listener: tokio::TcpListener, session_tx: Sender<SessionRequest>, service_detector: ServiceDetector, connection_filter: ConnectionFilter, port: u16)
-    - handle_connection(stream: TcpStream, service: &str) -> Result<(), NetworkError>
+    - handle_connection(mut stream: TcpStream, client_addr: SocketAddr, session_tx: Sender<SessionRequest>, service_detector: ServiceDetector) -> Result<(), NetworkError>
   }
 
   struct ServiceDetector {
