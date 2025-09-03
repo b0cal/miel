@@ -11,12 +11,15 @@ use uuid::Uuid;
 use super::types::Direction;
 use crate::error_handling::types::CaptureError;
 
+type TcpTimestamps = Vec<(DateTime<Utc>, Direction, usize)>;
+type TcpArtifacts = (Vec<u8>, Vec<u8>, TcpTimestamps);
+
 #[derive(Debug)]
 pub struct TcpCapture {
     pub(crate) session_id: Uuid,
     pub(crate) client_to_container: Mutex<Vec<u8>>,
     pub(crate) container_to_client: Mutex<Vec<u8>>,
-    pub(crate) timestamps: Mutex<Vec<(DateTime<Utc>, Direction, usize)>>,
+    pub(crate) timestamps: Mutex<TcpTimestamps>,
 }
 
 impl TcpCapture {
@@ -132,16 +135,14 @@ impl TcpCapture {
         }
 
         while let Some(res) = set.join_next().await {
-            res.map_err(|e| {
-                CaptureError::TcpStreamError(io::Error::new(io::ErrorKind::Other, e))
-            })??;
+            res.map_err(|e| CaptureError::TcpStreamError(io::Error::other(e)))??;
         }
 
         trace!("[{:?}] tcp proxy completed", self.session_id);
         Ok(())
     }
 
-    pub fn get_artifacts(&self) -> (Vec<u8>, Vec<u8>, Vec<(DateTime<Utc>, Direction, usize)>) {
+    pub fn get_artifacts(&self) -> TcpArtifacts {
         let a = self.client_to_container.lock().unwrap().clone();
         let b = self.container_to_client.lock().unwrap().clone();
         let t = self.timestamps.lock().unwrap().clone();

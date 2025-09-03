@@ -9,13 +9,16 @@ use uuid::Uuid;
 use super::types::StdioStream;
 use crate::error_handling::types::CaptureError;
 
+type StdioTimestamps = Vec<(DateTime<Utc>, StdioStream, usize)>;
+type StdioArtifacts = (Vec<u8>, Vec<u8>, Vec<u8>, StdioTimestamps);
+
 #[derive(Debug)]
 pub struct StdioCapture {
     pub(crate) session_id: Uuid,
     pub(crate) stdin_data: Mutex<Vec<u8>>,
     pub(crate) stdout_data: Mutex<Vec<u8>>,
     pub(crate) stderr_data: Mutex<Vec<u8>>,
-    pub(crate) timestamps: Mutex<Vec<(DateTime<Utc>, StdioStream, usize)>>,
+    pub(crate) timestamps: Mutex<StdioTimestamps>,
 }
 
 impl StdioCapture {
@@ -75,8 +78,8 @@ impl StdioCapture {
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [SSH-CMD] <text>" => mapped to STDIN
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [SSH-OUTPUT] <text>" => mapped to STDOUT
     /// - "[YYYY-mm-dd HH:MM:SS UTC] [SSH-ERROR] <text>" => mapped to STDERR
-    /// Other tags (e.g., [SSHD], [SSH-SESSION], [SSH-EXIT], [HTTP-INFO], [HTTP-ERROR], [HTTP-SERVER]
-    /// are ignored for byte streams.
+    ///   Other tags (e.g., [SSHD], [SSH-SESSION], [SSH-EXIT], [HTTP-INFO], [HTTP-ERROR], [HTTP-SERVER]
+    ///   are ignored for byte streams.
     pub fn capture_activity_log_from_path<P: AsRef<std::path::Path>>(
         &self,
         path: P,
@@ -116,7 +119,7 @@ impl StdioCapture {
         let mut rest = line;
         // Strip leading [timestamp]
         if let Some(close) = rest.find(']') {
-            rest = &rest[close + 1..].trim_start();
+            rest = rest[close + 1..].trim_start();
         } else {
             trace!(
                 "[{}] unrecognized line (no timestamp): {}",
@@ -215,14 +218,7 @@ impl StdioCapture {
         }
     }
 
-    pub fn get_artifacts(
-        &self,
-    ) -> (
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<(DateTime<Utc>, StdioStream, usize)>,
-    ) {
+    pub fn get_artifacts(&self) -> StdioArtifacts {
         let i = self.stdin_data.lock().unwrap().clone();
         let o = self.stdout_data.lock().unwrap().clone();
         let e = self.stderr_data.lock().unwrap().clone();
