@@ -2,21 +2,18 @@ use crate::active_session::ActiveSession;
 use crate::configuration::types::ServiceConfig;
 use crate::container_management::container_manager::ContainerManager;
 use crate::container_management::ContainerHandle;
-use crate::data_capture::stream_recorder::{self, StreamRecorder};
+use crate::data_capture::Storage;
+use crate::data_capture::StreamRecorder;
 use crate::error_handling::types::SessionError;
 use crate::network::types::SessionRequest;
 use crate::session::Session;
-use crate::storage::Storage;
 use crate::SessionStatus;
 use chrono::Utc;
 use log::{debug, error};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{self};
-use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// The structure related to session management
@@ -207,119 +204,3 @@ impl SessionManager {
         Ok((new_session, container_handle))
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use std::sync::Arc;
-//     use chrono::Duration;
-//     use crate::active_session::ActiveSession;
-//     use crate::container_management::container_manager::ContainerManager;
-//     use crate::session_manager::SessionManager;
-//     use crate::session_request::SessionRequest;
-//
-//     #[test]
-//     fn test_create_session_manager() {
-//         let container_manager = Arc::new(ContainerManager::new());
-//         let storage = Arc::new(DatabaseStorage);
-//         let mut session_manager = SessionManager::new(container_manager.clone(), storage.clone(), 20);
-//
-//         assert_eq!(session_manager.active_sessions.len(), 0);
-//         assert_eq!(session_manager.session_timeout, Duration::new(170000, 0));
-//         assert_eq!(session_manager.max_sessions, 20);
-//     }
-//
-//
-//
-//     #[test]
-//     fn test_cleanup_expired_sessions() {
-//         let container_manager = Arc::new(ContainerManager::new());
-//         let storage = Arc::new(DatabaseStorage);
-//         let mut session_manager = SessionManager::new(container_manager.clone(), storage.clone(), 20);
-//
-//
-//         let expired_session = ActiveSession {
-//             //TODO
-//         };
-//         session_manager.active_sessions.insert(expired_session.session.id, expired_session);
-//
-//         assert_eq!(session_manager.active_sessions.len(), 1);
-//         session_manager.cleanup_expired_sessions();
-//         assert_eq!(session_manager.active_sessions.len(), 0);
-//
-//     }
-//
-//
-//     #[test]
-//     fn test_create_session() {
-//         let container_manager = Arc::new(ContainerManager::new());
-//         let storage = Arc::new(DatabaseStorage);
-//         let mut session_manager = SessionManager::new(container_manager.clone(), storage.clone(), 20);
-//         let session_request = SessionRequest{
-//             //TODO
-//         }
-//
-//         session_manager.create_session(session_request);
-//         assert_eq!(session_manager.active_sessions.len(), 1);
-//
-//     }
-//
-// }
-//
-//
-//
-
-// async fn link_sockets(client: TcpStream, container: TcpStream, service: String) {
-//     let (mut client_read, mut client_write) = client.into_split();
-//     let (mut container_read, mut container_write) = container.into_split();
-//
-//     let service_client = service.clone();
-//     let service_container = service.clone();
-//
-//     // Client to container forwarding
-//     let client_to_container = async move {
-//         let mut buffer = [0; 4096];
-//         loop {
-//             match client_read.read(&mut buffer).await {
-//                 Ok(0) => {
-//                     debug!("{} client disconnected", service_client);
-//                     break;
-//                 }
-//                 Ok(n) => {
-//                     debug!("{} forwarding {} bytes to container", service_client, n);
-//                     if container_write.write_all(&buffer[..n]).await.is_err() {
-//                         break;
-//                     }
-//                 }
-//                 Err(_) => break,
-//             }
-//         }
-//     };
-//
-//     // Container to client forwarding
-//     let container_to_client = async move {
-//         let mut buffer = [0; 4096];
-//         loop {
-//             match container_read.read(&mut buffer).await {
-//                 Ok(0) => {
-//                     debug!("{} container disconnected", service_container);
-//                     break;
-//                 }
-//                 Ok(n) => {
-//                     debug!("{} forwarding {} bytes to client", service_container, n);
-//                     if client_write.write_all(&buffer[..n]).await.is_err() {
-//                         break;
-//                     }
-//                 }
-//                 Err(_) => break,
-//             }
-//         }
-//     };
-//
-//     // Run both directions concurrently
-//     tokio::select! {
-//         _ = client_to_container => {},
-//         _ = container_to_client => {},
-//     }
-//
-//     info!("{} connection closed", service);
-// }

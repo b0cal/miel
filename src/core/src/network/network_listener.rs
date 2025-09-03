@@ -390,7 +390,7 @@ impl NetworkListener {
 
         // Create session request
         let session_request = SessionRequest {
-            stream,
+            stream: Some(stream),
             service_name,
             client_addr,
             timestamp: Utc::now(),

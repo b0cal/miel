@@ -12,6 +12,8 @@ pub mod data_capture;
 
 pub mod error_handling;
 
+pub mod storage;
+
 pub use controller::*;
 
 pub use session_management::*;

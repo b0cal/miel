@@ -1,5 +1,5 @@
-use crate::container_management::container_handle::ContainerHandle;
-use crate::data_capture::stream_recorder::StreamRecorder;
+use crate::container_management::ContainerHandle;
+use crate::data_capture::StreamRecorder;
 use crate::session_management::session::Session;
 
 pub struct ActiveSession {
