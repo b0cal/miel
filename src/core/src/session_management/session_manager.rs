@@ -1,7 +1,8 @@
 use crate::active_session::ActiveSession;
 use crate::configuration::types::ServiceConfig;
 use crate::container_management::container_manager::ContainerManager;
-use crate::data_capture::stream_recorder::StreamRecorder;
+use crate::container_management::ContainerHandle;
+use crate::data_capture::stream_recorder::{self, StreamRecorder};
 use crate::error_handling::types::SessionError;
 use crate::network::types::SessionRequest;
 use crate::session::Session;
@@ -12,8 +13,10 @@ use log::{debug, error};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpStream;
 use tokio::io::{self};
+use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// The structure related to session management
@@ -33,7 +36,7 @@ use uuid::Uuid;
 pub struct SessionManager {
     // Fields for the SessionManager struct
     active_sessions: HashMap<Uuid, ActiveSession>,
-    container_manager: Arc<ContainerManager>,
+    container_manager: Arc<Mutex<ContainerManager>>,
     storage: Arc<dyn Storage>,
     max_sessions: usize,
     session_timeout: Duration,
@@ -41,7 +44,7 @@ pub struct SessionManager {
 
 impl SessionManager {
     pub fn new(
-        container_manager: Arc<ContainerManager>,
+        container_manager: Arc<Mutex<ContainerManager>>,
         storage: Arc<dyn Storage>,
         max_sessions: usize,
     ) -> Self {
@@ -56,92 +59,138 @@ impl SessionManager {
 
     pub async fn handle_session(
         &mut self,
-        request: SessionRequest,
+        mut request: SessionRequest,
         service_config: &ServiceConfig,
     ) -> Result<(), SessionError> {
+        let request_stream = request.stream.take().ok_or(SessionError::CreationFailed)?;
 
-        if self.find_session(&request).is_some() {
-            debug!("Session already active for Ip:{} / Service:{}", request.client_addr.ip(), request.service_name);
+        if let Some(active_session) = self.find_session(&request) {
+            let container_tcp_socket = active_session
+                .container_handle
+                .as_mut()
+                .and_then(|handle| handle.tcp_socket.take())
+                .ok_or(SessionError::CreationFailed)?;
+
+            active_session
+                .stream_recorder
+                .start_tcp_proxy(request_stream, container_tcp_socket)
+                .await
+                .map_err(|_| {
+                    error!("An error occurred in data_capture");
+                    SessionError::CreationFailed
+                })?;
+
             return Ok(());
         }
 
-        let _active_session = match self.create_session(request, service_config) {
-            Ok(s) => s,
-            Err(_) => return Err(SessionError::CreationFailed),
+        let (session, container_handle) = self.create_session(request, service_config).await?;
+        let id = session.id;
+
+        let mut active_session = ActiveSession {
+            session,
+            container_handle: Some(container_handle),
+            stream_recorder: StreamRecorder::new(id, self.storage.clone()),
         };
+
+        let container_tcp_socket = active_session
+            .container_handle
+            .as_mut()
+            .and_then(|handle| handle.tcp_socket.take())
+            .ok_or(SessionError::CreationFailed)?;
+
+        active_session
+            .stream_recorder
+            .start_tcp_proxy(request_stream, container_tcp_socket)
+            .await
+            .map_err(|_| {
+                error!("An error occurred in data_capture");
+                SessionError::CreationFailed
+            })?;
+
+        self.active_sessions.insert(id, active_session);
 
         Ok(())
     }
 
-    fn find_session(&self, request: &SessionRequest) -> Option<&ActiveSession> {
-        let found = self.active_sessions.iter().find(|(_, active_s)| request.client_addr.ip() == active_s.session.client_addr.ip() && request.client_addr.port() == active_s.session.client_addr.port() );
+    fn find_session(&mut self, request: &SessionRequest) -> Option<&mut ActiveSession> {
+        let found = self.active_sessions.iter_mut().find(|(_, active_s)| {
+            request.client_addr.ip() == active_s.session.client_addr.ip()
+                && request.client_addr.port() == active_s.session.client_addr.port()
+        });
         match found {
             Some((_, active_s)) => Some(active_s),
             None => None,
         }
     }
 
-    pub fn cleanup_expired_sessions(&mut self) {
-        self.active_sessions.retain(|_id, active_session| {
-            if let Some(end_time) = active_session.session.end_time {
-                let elapsed = Utc::now() - end_time;
-                if elapsed.num_seconds() >= self.session_timeout.as_secs() as i64 {
-                    active_session.session.status = SessionStatus::Completed;
-                    if let Some(container_handle) = active_session.container_handle.take() {
-                        if let Err(e) = self.container_manager.cleanup_container(container_handle) {
-                            error!("failed to clean up container: {:?}", e);
-                        }
+    pub async fn cleanup_expired_sessions(&mut self) {
+        let expired_ids: Vec<_> = self
+            .active_sessions
+            .iter()
+            .filter_map(|(id, active_session)| {
+                if let Some(end_time) = active_session.session.end_time {
+                    if (Utc::now() - end_time).num_seconds()
+                        >= self.session_timeout.as_secs() as i64
+                    {
+                        Some(id.clone())
+                    } else {
+                        None
                     }
-                    return false;
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for id in expired_ids {
+            if let Some(mut active_session) = self.active_sessions.remove(&id) {
+                active_session.session.status = SessionStatus::Completed;
+                if let Some(container_handle) = active_session.container_handle.take() {
+                    let mut manager = self.container_manager.lock().await;
+                    if let Err(e) = manager.cleanup_container(container_handle).await {
+                        error!("failed to clean up container: {:?}", e);
+                    }
                 }
             }
-            true
-        });
+        }
     }
 
-    pub fn get_active_session_count(&self) -> usize {
-        self.active_sessions.len()
-    }
-
-    pub fn shutdown_all_sessions(&mut self) -> Result<(), SessionError> {
+    pub async fn shutdown_all_sessions(&mut self) -> Result<(), SessionError> {
         for active_session in self.active_sessions.values_mut() {
             active_session.session.status = SessionStatus::Completed;
 
             if let Some(container_handle) = active_session.container_handle.take() {
-                // Pass ownership to cleanup_container
-                self.container_manager
+                let mut manager = self.container_manager.lock().await;
+                manager
                     .cleanup_container(container_handle)
+                    .await
                     .map_err(SessionError::ContainerError)?;
             }
         }
         Ok(())
     }
 
-    async fn join_streams(s1: TcpStream, s2: TcpStream) -> io::Result<()> {
-        let (mut r1, mut w1) = s1.into_split();
-        let (mut r2, mut w2) = s2.into_split();
-
-        let c2s = tokio::spawn(async move {
-            io::copy(&mut r1, &mut w2).await
-        });
-
-        let s2c = tokio::spawn(async move {
-            io::copy(&mut r2, &mut w1).await
-        });
-
-        let _ = tokio::try_join!(c2s, s2c)?;
-
-        Ok(())
-    }
-
-    fn create_session(
+    async fn create_session(
         &mut self,
-        mut request: SessionRequest,
+        request: SessionRequest,
         service_config: &ServiceConfig,
-    ) -> Result<(), SessionError> {
-        let mut container_handle = match self.container_manager.create_container(service_config) {
+    ) -> Result<(Session, ContainerHandle), SessionError> {
+        if self.max_sessions == self.active_sessions.len() - 1 {
+            return Err(SessionError::CreationFailed);
+        }
+
+        let container_handle = match self
+            .container_manager
+            .lock()
+            .await
+            .create_container(service_config)
+            .await
+        {
             Ok(container_handle) => container_handle,
-            Err(e) => return Err(SessionError::ContainerError(e)),
+            Err(e) => {
+                error!("Failed to create container: {:?}", e);
+                return Err(SessionError::CreationFailed);
+            }
         };
 
         let new_session = Session {
@@ -155,26 +204,7 @@ impl SessionManager {
             status: SessionStatus::Active,
         };
 
-        let session_id = new_session.id;
-
-        let s1 = request.take_stream().unwrap();
-        let s2 = container_handle.take_stream().unwrap();
-
-        let join_handle = tokio::spawn(async move {
-            Self::join_streams(s1, s2).await;
-        });
-
-        let new_active_session = ActiveSession {
-            session: new_session,
-            container_handle: Some(container_handle),
-            stream_recorder: StreamRecorder::new(session_id, self.storage.clone()),
-            _cleanup_handle: join_handle,
-        };
-
-        self.active_sessions.insert(session_id, new_active_session);
-
-
-        Ok(())
+        Ok((new_session, container_handle))
     }
 }
 

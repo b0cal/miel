@@ -7,7 +7,4 @@ pub struct ActiveSession {
     pub session: Session,
     pub container_handle: Option<ContainerHandle>,
     pub stream_recorder: StreamRecorder,
-    pub _cleanup_handle: tokio::task::JoinHandle<()>,
 }
-
-

@@ -2,7 +2,6 @@ use crate::configuration::types::Protocol;
 use chrono::{DateTime, Utc};
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
-use crate::container_management::container_handle::ContainerHandle;
 
 #[derive(Clone)]
 pub struct ServicePattern {
@@ -25,3 +24,4 @@ impl SessionRequest {
         self.stream.take()
     }
 }
+
