@@ -41,7 +41,10 @@ impl ServiceDetector {
         })?;
         let port = local_addr.port();
 
+        log::debug!("Local address port is {}", port);
+
         if let Some(service) = self.detect_from_port(port) {
+            log::debug!("Service {} detected from port", service);
             return Ok(service);
         }
 
@@ -58,6 +61,7 @@ impl ServiceDetector {
 
         if n > 0 {
             if let Some(service) = self.detect_from_payload(&buf[..n]) {
+                log::debug!("Service {} detected from payload", service);
                 return Ok(service);
             }
         }

@@ -1,5 +1,5 @@
 use crate::configuration::config::Config;
-use crate::error_handling::types::ControllerError;
+use crate::error_handling::types::{ConfigError, ControllerError};
 use crate::network::{network_listener::NetworkListener, types::SessionRequest};
 use log::{debug, error};
 use std::net::Ipv4Addr;
@@ -31,15 +31,17 @@ impl Controller {
 
         let _ = self.listener.as_mut().unwrap().bind_services(self.config.services.as_slice()).map_err(|e| {
             error!("Calling bind_services() from Controller not working, returned with error: {:?}", e);
+            e
         });
 
-        let ip_addr = Ipv4Addr::from_str(self.config.bind_address.as_str()).unwrap();
+        let ip_addr =
+            Ipv4Addr::from_str(self.config.bind_address.as_str()).map_err(|e| e.to_string());
 
         // Should be ok to take ownership here as the self.listener shouldn't be used after this spawn
         let mut listener = self.listener.take().unwrap();
 
         tokio::spawn(async move {
-            if let Err(e) = listener.start_listening(ip_addr).await {
+            if let Err(e) = listener.start_listening(ip_addr.unwrap()).await {
                 error!("NetworkListener failed: {:?}", e);
             }
         });
@@ -144,7 +146,7 @@ mod tests {
         debug!("=== Starting Complete Controller Flow Test ===");
 
         let config = create_http_test_config().await;
-        debug!("Created test config with NewtorkListener binding to port 8000",);
+        debug!("Created test config with NetworkListener binding to port 8000",);
 
         let mut controller = Controller::new(config).unwrap();
         debug!("Controller initialized");
