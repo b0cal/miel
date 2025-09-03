@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn ephemeral_port_allocation_functionality() {
-        use std::net::{TcpListener, UdpSocket, Ipv4Addr};
+        use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 
         // Test TCP port allocation
         let tcp_listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
@@ -246,10 +246,10 @@ mod tests {
         }
 
         // Verify progressive increase
-        assert_eq!(wait_times[0], 700);   // 500 + 1*200
-        assert_eq!(wait_times[1], 900);   // 500 + 2*200
-        assert_eq!(wait_times[2], 1100);  // 500 + 3*200
-        assert_eq!(wait_times[4], 1500);  // 500 + 5*200
+        assert_eq!(wait_times[0], 700); // 500 + 1*200
+        assert_eq!(wait_times[1], 900); // 500 + 2*200
+        assert_eq!(wait_times[2], 1100); // 500 + 3*200
+        assert_eq!(wait_times[4], 1500); // 500 + 5*200
 
         // Verify cap at 3000ms
         for &time in &wait_times[10..] {
@@ -259,7 +259,8 @@ mod tests {
 
     #[test]
     fn container_registry_operations() {
-        let mut registry: std::collections::HashMap<String, ContainerHandle> = std::collections::HashMap::new();
+        let mut registry: std::collections::HashMap<String, ContainerHandle> =
+            std::collections::HashMap::new();
 
         // Test insertion
         let handle1 = ContainerHandle {
@@ -348,7 +349,7 @@ mod tests {
 
         let runtime_error = ContainerError::RuntimeNotAvailable;
         match runtime_error {
-            ContainerError::RuntimeNotAvailable => { /* Expected */ },
+            ContainerError::RuntimeNotAvailable => { /* Expected */ }
             _ => panic!("Expected RuntimeNotAvailable variant"),
         }
     }
@@ -492,7 +493,8 @@ mod tests {
             failed_count: 0,
         };
 
-        let active_containers: std::collections::HashMap<String, ContainerHandle> = std::collections::HashMap::new();
+        let active_containers: std::collections::HashMap<String, ContainerHandle> =
+            std::collections::HashMap::new();
 
         // Simulate the recomputation logic from get_container_stats()
         stats.active_count = active_containers.len();
@@ -520,7 +522,8 @@ mod tests {
 
     #[test]
     fn container_lookup_edge_cases() {
-        let mut registry: std::collections::HashMap<String, ContainerHandle> = std::collections::HashMap::new();
+        let mut registry: std::collections::HashMap<String, ContainerHandle> =
+            std::collections::HashMap::new();
 
         // Test lookup on empty registry
         assert!(registry.get("nonexistent").is_none());
@@ -590,7 +593,11 @@ mod tests {
             // Ensure no command injection characters are present in critical parts
             let critical_parts = ["-o ListenAddress=127.0.0.1", "-o UsePAM=no"];
             for part in &critical_parts {
-                assert!(ssh_cmd.contains(part), "Missing critical SSH parameter: {}", part);
+                assert!(
+                    ssh_cmd.contains(part),
+                    "Missing critical SSH parameter: {}",
+                    part
+                );
             }
         }
 
@@ -609,7 +616,7 @@ mod tests {
 
     #[test]
     fn container_port_range_validation() {
-        use std::net::{TcpListener, Ipv4Addr};
+        use std::net::{Ipv4Addr, TcpListener};
 
         // Test that we can allocate ports across the valid range
         let mut allocated_ports = Vec::new();
@@ -633,7 +640,10 @@ mod tests {
         // Verify we got different ports (highly likely with ephemeral allocation)
         allocated_ports.sort();
         allocated_ports.dedup();
-        assert!(allocated_ports.len() >= 5, "Not enough unique ports allocated");
+        assert!(
+            allocated_ports.len() >= 5,
+            "Not enough unique ports allocated"
+        );
     }
 
     #[test]
@@ -658,7 +668,11 @@ mod tests {
             }
 
             fn create(&mut self, cfg: &ServiceConfig) -> ContainerHandle {
-                let id = format!("mock-{}-{}", cfg.name, &uuid::Uuid::new_v4().to_string()[..8]);
+                let id = format!(
+                    "mock-{}-{}",
+                    cfg.name,
+                    &uuid::Uuid::new_v4().to_string()[..8]
+                );
                 let handle = ContainerHandle {
                     id: id.clone(),
                     service_name: cfg.name.clone(),
@@ -763,7 +777,7 @@ mod tests {
             "miel-ssh-abc123",
             "miel-http-def456",
             "miel-ftp-ghi789",
-            "test-container-xyz"
+            "test-container-xyz",
         ];
 
         for container_id in &container_ids {

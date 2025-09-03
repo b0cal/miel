@@ -21,9 +21,9 @@
 
 pub mod container_manager;
 #[cfg(test)]
-pub mod tests;
-#[cfg(test)]
 pub mod integration_tests;
+#[cfg(test)]
+pub mod tests;
 pub mod types;
 
 pub use container_manager::ContainerManager;

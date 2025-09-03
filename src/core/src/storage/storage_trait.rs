@@ -45,4 +45,3 @@ pub trait Storage: Send + Sync {
     /// Retrieves capture artifacts for a given session.
     fn get_capture_artifacts(&self, session_id: Uuid) -> Result<CaptureArtifacts, StorageError>;
 }
-

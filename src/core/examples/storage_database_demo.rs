@@ -18,7 +18,12 @@ fn main() {
     // Choose an output directory for exports (does not affect backend env defaults)
     let out_dir: PathBuf = env::var("STORAGE_DEMO_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| env::current_dir().expect("cwd").join("target").join("storage_demo"));
+        .unwrap_or_else(|_| {
+            env::current_dir()
+                .expect("cwd")
+                .join("target")
+                .join("storage_demo")
+        });
     fs::create_dir_all(&out_dir).expect("create output dir");
 
     // Backends: prefer environment variables if present
@@ -27,7 +32,10 @@ fn main() {
         DatabaseStorage::new().expect("create db (env)")
     } else {
         let db_path = out_dir.join("storage_demo.sqlite3");
-        info!("Using DatabaseStorage at {} (no MIEL_DB_PATH)", db_path.display());
+        info!(
+            "Using DatabaseStorage at {} (no MIEL_DB_PATH)",
+            db_path.display()
+        );
         DatabaseStorage::new_file(&db_path).expect("create db (file)")
     };
 
@@ -35,7 +43,10 @@ fn main() {
         info!("Using FileStorage::new_default() with MIEL_FILE_STORAGE_DIR");
         FileStorage::new_default().expect("create file storage (env)")
     } else {
-        info!("Using FileStorage rooted at {} (no MIEL_FILE_STORAGE_DIR)", out_dir.display());
+        info!(
+            "Using FileStorage rooted at {} (no MIEL_FILE_STORAGE_DIR)",
+            out_dir.display()
+        );
         FileStorage::new(&out_dir).expect("create file storage (dir)")
     };
 
@@ -72,8 +83,12 @@ fn main() {
         .expect("save interaction fs 2");
 
     // 2) Load and display interaction data from both backends
-    let data_db = storage_db.get_session_data(session_id).expect("get data db");
-    let data_fs = storage_fs.get_session_data(session_id).expect("get data fs");
+    let data_db = storage_db
+        .get_session_data(session_id)
+        .expect("get data db");
+    let data_fs = storage_fs
+        .get_session_data(session_id)
+        .expect("get data fs");
     info!(
         "DB interaction data ({} bytes): {}",
         data_db.len(),
@@ -125,11 +140,14 @@ fn main() {
         .expect("fetch artifacts fs");
     info!(
         "Artifacts -> DB total_bytes={}, FS total_bytes={}",
-        fetched_db.total_bytes,
-        fetched_fs.total_bytes
+        fetched_db.total_bytes, fetched_fs.total_bytes
     );
     if fetched_db.stdio_stdout != fetched_fs.stdio_stdout {
-        warn!("DB and FS stdout differ (sizes: DB={}, FS={})", fetched_db.stdio_stdout.len(), fetched_fs.stdio_stdout.len());
+        warn!(
+            "DB and FS stdout differ (sizes: DB={}, FS={})",
+            fetched_db.stdio_stdout.len(),
+            fetched_fs.stdio_stdout.len()
+        );
     }
 
     // Export DB artifacts to a JSON file for easy inspection
@@ -145,20 +163,36 @@ fn main() {
     // 5) Query sessions (no cleanup) from both backends and display counts
     let all_db = storage_db.get_sessions(None).expect("list sessions db");
     let all_fs = storage_fs.get_sessions(None).expect("list sessions fs");
-    info!("Total sessions -> DB: {}, FS: {}", all_db.len(), all_fs.len());
+    info!(
+        "Total sessions -> DB: {}, FS: {}",
+        all_db.len(),
+        all_fs.len()
+    );
 
     // Print detailed session info from DB
     for s in &all_db {
         info!(
             "DB session: id={} service={} client={} start={} end={:?} status={:?} bytes={}",
-            s.id, s.service_name, s.client_addr, s.start_time, s.end_time, s.status, s.bytes_transferred
+            s.id,
+            s.service_name,
+            s.client_addr,
+            s.start_time,
+            s.end_time,
+            s.status,
+            s.bytes_transferred
         );
     }
     // Print detailed session info from FS
     for s in &all_fs {
         info!(
             "FS session: id={} service={} client={} start={} end={:?} status={:?} bytes={}",
-            s.id, s.service_name, s.client_addr, s.start_time, s.end_time, s.status, s.bytes_transferred
+            s.id,
+            s.service_name,
+            s.client_addr,
+            s.start_time,
+            s.end_time,
+            s.status,
+            s.bytes_transferred
         );
     }
 
@@ -168,7 +202,11 @@ fn main() {
     info!(
         "Artifacts preview (DB stdout, first <=64 chars): {}{}",
         preview,
-        if fetched_db.stdio_stdout.len() > 64 { "…" } else { "" }
+        if fetched_db.stdio_stdout.len() > 64 {
+            "…"
+        } else {
+            ""
+        }
     );
 
     info!("Demo complete. Inspect files under: {}", out_dir.display());
