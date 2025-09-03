@@ -1,3 +1,9 @@
+//! SQLite-backed storage implementation using SeaORM.
+//!
+//! This backend persists sessions, interactions, and capture artifacts to a
+//! local SQLite database. It honors the `MIEL_DB_PATH` environment variable
+//! to select the database file location, otherwise defaults to `./miel.sqlite3`.
+
 use std::env;
 use std::path::Path;
 
@@ -5,16 +11,23 @@ use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::{Expr, Func};
-use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, Database, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, QueryOrder, Set, Statement};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Condition, Database, DatabaseConnection, DbBackend, EntityTrait,
+    QueryFilter, QueryOrder, Set, Statement,
+};
 use uuid::Uuid;
 
 use crate::error_handling::types::StorageError;
-use crate::storage::storage::Storage;
-use crate::storage::types::{CaptureArtifacts, Session, SessionFilter};
 use crate::storage::db_entities as session;
 use crate::storage::db_entities::artifacts as art;
 use crate::storage::db_entities::interactions as inter;
+use crate::storage::storage::Storage;
+use crate::storage::types::{CaptureArtifacts, Session, SessionFilter};
 
+/// Storage backend that uses SQLite via SeaORM.
+///
+/// Construct with [`DatabaseStorage::new`] to respect `MIEL_DB_PATH` or
+/// [`DatabaseStorage::new_file`] for an explicit database path.
 pub struct DatabaseStorage {
     rt: tokio::runtime::Runtime,
     conn: DatabaseConnection,
@@ -28,8 +41,13 @@ impl DatabaseStorage {
     pub fn new() -> Result<Self, StorageError> {
         if let Ok(path_str) = env::var("MIEL_DB_PATH") {
             let path = Path::new(&path_str);
-            if let Some(parent) = path.parent() { std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?; }
-            info!("Opening SQLite database from MIEL_DB_PATH: {}", path.display());
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?;
+            }
+            info!(
+                "Opening SQLite database from MIEL_DB_PATH: {}",
+                path.display()
+            );
             return Self::new_file(path);
         }
         let cwd = env::current_dir().map_err(|_| StorageError::ConnectionFailed)?;
@@ -38,6 +56,9 @@ impl DatabaseStorage {
         Self::new_file(path)
     }
 
+    /// Create or open the database at the specified filesystem path.
+    ///
+    /// The file is created if missing; parent directories are ensured.
     pub fn new_file<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -51,12 +72,10 @@ impl DatabaseStorage {
         // DSN understood by sea-orm/sqlx driver; will create file if needed
         let dsn = format!("sqlite://{}?mode=rwc", path_ref.to_string_lossy());
         let conn = rt.block_on(async {
-            let conn = Database::connect(dsn)
-                .await
-                .map_err(|e| {
-                    error!("DB connect failed: {}", e);
-                    StorageError::ConnectionFailed
-                })?;
+            let conn = Database::connect(dsn).await.map_err(|e| {
+                error!("DB connect failed: {}", e);
+                StorageError::ConnectionFailed
+            })?;
             // ensure foreign keys
             conn.execute(Statement::from_string(
                 DbBackend::Sqlite,
@@ -140,15 +159,13 @@ impl DatabaseStorage {
             end_time: Set(s.end_time.map(|t| t.to_rfc3339())),
             container_id: Set(s.container_id.clone()),
             bytes_transferred: Set(s.bytes_transferred as i64),
-            status: Set(
-                match s.status {
-                    crate::session_management::SessionStatus::Pending => "Pending",
-                    crate::session_management::SessionStatus::Active => "Active",
-                    crate::session_management::SessionStatus::Completed => "Completed",
-                    crate::session_management::SessionStatus::Error => "Error",
-                }
-                .to_string(),
-            ),
+            status: Set(match s.status {
+                crate::session_management::SessionStatus::Pending => "Pending",
+                crate::session_management::SessionStatus::Active => "Active",
+                crate::session_management::SessionStatus::Completed => "Completed",
+                crate::session_management::SessionStatus::Error => "Error",
+            }
+            .to_string()),
         }
     }
 
@@ -194,16 +211,13 @@ impl Storage for DatabaseStorage {
                 .map_err(|e| {
                     error!("DB read error in save_session find_by_id: {}", e);
                     StorageError::ReadFailed
-                })?
-            {
+                })? {
                 Some(existing) => {
                     am.id = Set(existing.id);
-                    am.update(&self.conn)
-                        .await
-                        .map_err(|e| {
-                            error!("DB write error in save_session update: {}", e);
-                            StorageError::WriteFailed
-                        })?;
+                    am.update(&self.conn).await.map_err(|e| {
+                        error!("DB write error in save_session update: {}", e);
+                        StorageError::WriteFailed
+                    })?;
                     info!("Updated session {}", session_obj.id);
                 }
                 None => {
@@ -257,13 +271,10 @@ impl Storage for DatabaseStorage {
                 }
                 query = query.filter(cond);
             }
-            let rows = query
-                .all(&self.conn)
-                .await
-                .map_err(|e| {
-                    error!("DB read error in get_sessions: {}", e);
-                    StorageError::ReadFailed
-                })?;
+            let rows = query.all(&self.conn).await.map_err(|e| {
+                error!("DB read error in get_sessions: {}", e);
+                StorageError::ReadFailed
+            })?;
             debug!("Fetched {} session rows", rows.len());
             rows.into_iter().map(Self::from_session_model).collect()
         })
@@ -276,13 +287,15 @@ impl Storage for DatabaseStorage {
                 data: Set(data.to_vec()),
                 ..Default::default()
             };
-            am.insert(&self.conn)
-                .await
-                .map_err(|e| {
-                    error!("DB write error in save_interaction insert: {}", e);
-                    StorageError::WriteFailed
-                })?;
-            debug!("Inserted interaction ({} bytes) for session {}", data.len(), session_id);
+            am.insert(&self.conn).await.map_err(|e| {
+                error!("DB write error in save_interaction insert: {}", e);
+                StorageError::WriteFailed
+            })?;
+            debug!(
+                "Inserted interaction ({} bytes) for session {}",
+                data.len(),
+                session_id
+            );
             Ok(())
         })
     }
@@ -304,7 +317,12 @@ impl Storage for DatabaseStorage {
                 out.extend_from_slice(&r.data);
                 chunks += 1;
             }
-            debug!("Concatenated {} interaction chunk(s) for session {}, total {} bytes", chunks, session_id, out.len());
+            debug!(
+                "Concatenated {} interaction chunk(s) for session {}, total {} bytes",
+                chunks,
+                session_id,
+                out.len()
+            );
             Ok(out)
         })
     }
@@ -325,7 +343,10 @@ impl Storage for DatabaseStorage {
                     error!("DB write error in cleanup_old_sessions delete_many: {}", e);
                     StorageError::WriteFailed
                 })?;
-            info!("Deleted {} session(s) older than {}", res.rows_affected, cutoff);
+            info!(
+                "Deleted {} session(s) older than {}",
+                res.rows_affected, cutoff
+            );
             Ok(res.rows_affected as usize)
         })
     }
@@ -340,19 +361,16 @@ impl Storage for DatabaseStorage {
                 .map_err(|e| {
                     error!("DB read error in save_capture_artifacts find_by_id: {}", e);
                     StorageError::ReadFailed
-                })?
-            {
+                })? {
                 Some(_) => {
                     let am = art::ActiveModel {
                         session_id: Set(id.clone()),
                         json: Set(json),
                     };
-                    am.update(&self.conn)
-                        .await
-                        .map_err(|e| {
-                            error!("DB write error in save_capture_artifacts update: {}", e);
-                            StorageError::WriteFailed
-                        })?;
+                    am.update(&self.conn).await.map_err(|e| {
+                        error!("DB write error in save_capture_artifacts update: {}", e);
+                        StorageError::WriteFailed
+                    })?;
                     info!("Updated artifacts for session {}", id);
                 }
                 None => {
@@ -364,7 +382,10 @@ impl Storage for DatabaseStorage {
                         .exec(&self.conn)
                         .await
                         .map_err(|e| {
-                            error!("DB write error in save_capture_artifacts insert exec: {}", e);
+                            error!(
+                                "DB write error in save_capture_artifacts insert exec: {}",
+                                e
+                            );
                             StorageError::WriteFailed
                         })?;
                     info!("Inserted artifacts for session {}", id);
