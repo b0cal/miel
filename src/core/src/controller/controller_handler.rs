@@ -67,12 +67,22 @@ mod tests {
     use tokio::net::TcpStream;
     use tokio::time;
 
+    async fn get_free_port() -> u16 {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("bind 0");
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        port
+    }
+
     async fn create_http_test_config() -> Config {
+        let free_port = get_free_port().await;
         Config {
             bind_address: "127.0.0.1".to_string(),
             services: vec![ServiceConfig {
                 name: "http".to_string(),
-                port: 8000,
+                port: free_port,
                 protocol: Protocol::TCP,
                 header_patterns: vec!["GET".to_string(), "POST".to_string()],
                 banner_response: Some("HTTP/1.1 200 OK\r\n\r\n".to_string()),
@@ -146,7 +156,11 @@ mod tests {
         debug!("=== Starting Complete Controller Flow Test ===");
 
         let config = create_http_test_config().await;
-        debug!("Created test config with NetworkListener binding to port 8000",);
+        let port = config.services[0].port;
+        debug!(
+            "Created test config with NetworkListener binding to port {}",
+            port
+        );
 
         let mut controller = Controller::new(config).unwrap();
         debug!("Controller initialized");
@@ -158,15 +172,18 @@ mod tests {
             debug!("Controller.run() has ended");
         });
 
-        debug!("Waiting for NetworkListener to bind and start listening on port 8000 ...",);
-        let ready = wait_for_service_ready(8000, Duration::from_secs(10)).await;
+        debug!(
+            "Waiting for NetworkListener to bind and start listening on port {} ...",
+            port
+        );
+        let ready = wait_for_service_ready(port, Duration::from_secs(10)).await;
         assert!(ready, "HTTP service should be ready within 10 seconds");
         debug!("NetworkListener is ready and accepting connections");
 
         time::sleep(Duration::from_millis(200)).await;
 
         debug!("Simulating HTTP client connection...");
-        let response_result = simulate_http_client(8000).await;
+        let response_result = simulate_http_client(port).await;
 
         match response_result {
             Ok(response) => {

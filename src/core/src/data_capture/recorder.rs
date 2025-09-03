@@ -1,3 +1,45 @@
+//! Stream recording orchestration for a single session.
+//!
+//! This module provides `StreamRecorder`, a small façade that ties together
+//! bidirectional TCP proxying (via `TcpCapture`) and best‑effort stdio/PTY
+//! snapshotting (via `StdioCapture`) for one honeypot session. It aggregates
+//! the resulting byte streams and metadata into `CaptureArtifacts` and persists
+//! them through the injected `Storage` implementation.
+//!
+//! Highlights
+//! - Full‑duplex TCP proxy with per‑direction buffering and timestamps
+//! - Graceful EOF propagation to avoid hangs (shutdown of the peer writer)
+//! - Optional PTY snapshot for stdout/stderr capture
+//! - Pluggable persistence through `Storage` (dependency injected)
+//! - Rich logging at TRACE/DEBUG/INFO
+//!
+//! Minimal usage
+//! ```no_run
+//! use std::sync::Arc;
+//! use tokio::net::TcpStream;
+//! use uuid::Uuid;
+//! use miel::data_capture::StreamRecorder;
+//! use miel::data_capture::CaptureArtifacts;
+//!
+//! // Your Storage implementation just needs to persist/retrieve artifacts.
+//! struct MyStorage;
+//! impl miel::data_capture::Storage for MyStorage {
+//!     fn save_capture_artifacts(&self, _a: &CaptureArtifacts) -> Result<(), miel::error_handling::types::StorageError> { Ok(()) }
+//!     fn get_capture_artifacts(&self, _id: Uuid) -> Result<CaptureArtifacts, miel::error_handling::types::StorageError> { todo!() }
+//! }
+//!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let storage: Arc<dyn miel::data_capture::Storage> = Arc::new(MyStorage);
+//! let recorder = StreamRecorder::new(Uuid::new_v4(), storage);
+//!
+//! // Example sockets; in real code they come from your listener/container.
+//! let (client, server) = (TcpStream::connect("127.0.0.1:1").await?, TcpStream::connect("127.0.0.1:2").await?);
+//! let _ = recorder.start_tcp_proxy(client, server).await; // ignore errors in example
+//! let _ = recorder.finalize_capture(); // ignore errors in example
+//! # Ok(())
+//! # }
+//! ```
+
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -5,22 +47,45 @@ use tokio::net::TcpStream;
 use uuid::Uuid;
 use log::{debug, info};
 
-use crate::error_handling::types::{CaptureError, StorageError};
+use crate::error_handling::types::{CaptureError};
 
 use super::storage::Storage;
 use super::tcp_capture::TcpCapture;
 use super::types::CaptureArtifacts;
 use super::stdio_capture::StdioCapture;
 
+/// Orchestrates network and stdio capture for a single session.
+///
+/// A `StreamRecorder` owns per‑session capture state and a reference to
+/// a pluggable [`Storage`] implementation. It exposes three operations:
+/// - [`start_tcp_proxy`]: full‑duplex forwarding between client and container
+///   sockets while recording both directions with timestamps.
+/// - [`start_stdio_capture`]: optional, best‑effort snapshot from a PTY handle
+///   (e.g. container stdout/stderr); safe to call zero or multiple times.
+/// - [`finalize_capture`]: aggregates all data into [`CaptureArtifacts`],
+///   persists them via [`Storage`], and returns the artifacts to the caller.
+///
+/// Logging
+/// - DEBUG/INFO for lifecycle milestones
+/// - TRACE for short (64‑byte) previews of captured chunks
 pub struct StreamRecorder {
+    /// Unique session identifier (used to correlate logs and persisted data).
     session_id: Uuid,
+    /// TCP capture engine (both directions with timestamps).
     tcp_capture: Arc<TcpCapture>,
-    stdio_capture: Option<StdioCapture>,
+    /// Optional stdio/PTY snapshotter for the current session.
+    stdio_capture: Option<Arc<StdioCapture>>,
+    /// Pluggable persistence backend.
     storage: Arc<dyn Storage>,
+    /// Session start wall‑clock time (UTC), used to compute duration.
     start_time: DateTime<Utc>,
 }
 
 impl StreamRecorder {
+    /// Creates a new `StreamRecorder` for the given `session_id` and `storage`.
+    ///
+    /// The recorder holds only lightweight buffers and references; it’s cheap to
+    /// construct and clone the underlying `Arc` values as needed by your orchestration.
     pub fn new(session_id: Uuid, storage: Arc<dyn Storage>) -> Self {
         debug!("[{}] StreamRecorder created", session_id);
         Self {
@@ -32,6 +97,17 @@ impl StreamRecorder {
         }
     }
 
+    /// Starts a full‑duplex TCP proxy between the `client_stream` and the
+    /// `container_stream`, recording both directions.
+    ///
+    /// Behavior
+    /// - Forwards client→container and container→client using owned split halves.
+    /// - On EOF from one side, gracefully shuts down the opposite writer to wake
+    ///   the peer task and terminate without hangs.
+    /// - Records bytes and timestamps for both directions.
+    ///
+    /// Errors
+    /// - Returns [`CaptureError::TcpStreamError`] for read/write failures.
     pub async fn start_tcp_proxy(
         &self,
         client_stream: TcpStream,
@@ -42,14 +118,33 @@ impl StreamRecorder {
             .await
     }
 
+    /// Take a best‑effort PTY snapshot for stdio capture (non‑blocking where
+    /// possible) and appends results internally.
+    ///
+    /// Notes
+    /// - Safe to call multiple times; each call attempts a short read.
+    /// - It’s OK if the PTY isn’t readable yet (WouldBlock is ignored).
+    ///
+    /// Errors
+    /// - Returns [`CaptureError::StdioError`] for non‑recoverable IO failures.
     pub fn start_stdio_capture(&mut self, pty_master: std::fs::File) -> Result<(), CaptureError> {
         debug!("[{}] Starting stdio capture snapshot", self.session_id);
         let cap = self
             .stdio_capture
-            .get_or_insert_with(|| StdioCapture::new(self.session_id));
+            .get_or_insert_with(|| Arc::new(StdioCapture::new(self.session_id)))
+            .clone();
         cap.capture_pty(pty_master)
     }
 
+    /// Aggregates TCP and stdio buffers into [`CaptureArtifacts`], computes
+    /// totals and duration, persists them via [`Storage`], and returns the
+    /// artifacts to the caller.
+    ///
+    /// Returns
+    /// - Persisted [`CaptureArtifacts`] for this session.
+    ///
+    /// Errors
+    /// - Returns [`CaptureError::StorageError`] if the storage backend fails to persist.
     pub fn finalize_capture(&self) -> Result<CaptureArtifacts, CaptureError> {
         let (c2s, s2c, tcp_ts) = self.tcp_capture.get_artifacts();
 
@@ -105,6 +200,7 @@ mod tests {
 
     use crate::data_capture::storage::Storage;
     use crate::data_capture::types::Direction;
+    use crate::error_handling::types::StorageError;
 
     struct MemStorage {
         inner: StdMutex<Option<CaptureArtifacts>>,
@@ -192,7 +288,6 @@ mod tests {
         assert_eq!(&rbuf[..rn], b"pong");
 
         // Gracefully shutdown both write halves to trigger EOF on proxy tasks
-        use tokio::io::AsyncWriteExt as _;
         client_outside.shutdown().await.ok();
         container_inside.shutdown().await.ok();
 
