@@ -1,11 +1,11 @@
 use log::{debug, error, info};
 use miel::configuration::{Protocol, ServiceConfig};
 use miel::container_management::ContainerManager;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::fs::File;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::fs::File;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
 #[tokio::main]
@@ -79,7 +79,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Monitor HTTP container logs
-    let http_log_path = format!("/tmp/miel-logs/container-{}-activity.log", http_container.id);
+    let http_log_path = format!(
+        "/tmp/miel-logs/container-{}-activity.log",
+        http_container.id
+    );
     let http_container_id = http_container.id.clone();
     let log_monitors_http = Arc::clone(&log_monitors);
     tokio::spawn(async move {
@@ -87,8 +90,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     info!("Started log monitoring for containers:");
-    info!("  SSH container log: /tmp/miel-logs/container-{}-activity.log", ssh_container.id);
-    info!("  HTTP container log: /tmp/miel-logs/container-{}-activity.log", http_container.id);
+    info!(
+        "  SSH container log: /tmp/miel-logs/container-{}-activity.log",
+        ssh_container.id
+    );
+    info!(
+        "  HTTP container log: /tmp/miel-logs/container-{}-activity.log",
+        http_container.id
+    );
 
     // Create external server sockets that clients will connect to
     let ssh_listener = TcpListener::bind("127.0.0.1:2222").await?;
@@ -225,7 +234,10 @@ async fn monitor_container_log(
     container_id: String,
     _log_monitors: Arc<Mutex<HashMap<String, Vec<String>>>>,
 ) {
-    info!("Starting log monitor for container: {} at {}", container_id, log_path);
+    info!(
+        "Starting log monitor for container: {} at {}",
+        container_id, log_path
+    );
 
     // Wait a bit for the log file to be created
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -269,7 +281,10 @@ async fn monitor_container_log(
                 }
 
                 if new_lines_count > 0 {
-                    debug!("Displayed {} new log entries for container {}", new_lines_count, container_id);
+                    debug!(
+                        "Displayed {} new log entries for container {}",
+                        new_lines_count, container_id
+                    );
                 }
             }
             Err(e) => {

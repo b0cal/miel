@@ -47,8 +47,7 @@ mod integration_tests {
             return;
         }
 
-        let manager = ContainerManager::new()
-            .expect("Failed to create container manager");
+        let manager = ContainerManager::new().expect("Failed to create container manager");
 
         let stats = manager.get_container_stats();
         assert_eq!(stats.active_count, 0);
@@ -68,15 +67,15 @@ mod integration_tests {
             return;
         }
 
-        let mut manager = ContainerManager::new()
-            .expect("Failed to create container manager for lifecycle test");
+        let mut manager =
+            ContainerManager::new().expect("Failed to create container manager for lifecycle test");
 
         let http_service = create_test_service("http", 80, Protocol::TCP);
 
         println!("Creating HTTP service container...");
         let handle = timeout(
             Duration::from_secs(30),
-            manager.create_container(&http_service)
+            manager.create_container(&http_service),
         )
         .await
         .expect("Container creation timed out")
@@ -88,7 +87,10 @@ mod integration_tests {
         assert!(handle.host_port > 0);
         assert!(handle.host_port != 80);
 
-        println!("Container created: {} on port {}", handle.id, handle.host_port);
+        println!(
+            "Container created: {} on port {}",
+            handle.id, handle.host_port
+        );
 
         let stats = manager.get_container_stats();
         assert_eq!(stats.active_count, 1);
@@ -104,7 +106,8 @@ mod integration_tests {
         assert_eq!(retrieved.unwrap().service_name, "http");
 
         println!("Cleaning up container...");
-        manager.cleanup_container(handle)
+        manager
+            .cleanup_container(handle)
             .await
             .expect("Failed to cleanup container");
 

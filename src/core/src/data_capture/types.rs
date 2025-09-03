@@ -27,4 +27,3 @@ pub struct CaptureArtifacts {
     pub total_bytes: u64,
     pub duration: chrono::Duration,
 }
-

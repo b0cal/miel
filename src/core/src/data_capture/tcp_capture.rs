@@ -2,14 +2,14 @@ use std::io;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
+use log::trace;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::task::JoinSet;
 use uuid::Uuid;
-use log::trace;
 
-use crate::error_handling::types::CaptureError;
 use super::types::Direction;
+use crate::error_handling::types::CaptureError;
 
 #[derive(Debug)]
 pub struct TcpCapture {
@@ -55,7 +55,10 @@ impl TcpCapture {
                         Err(e) => break Err(CaptureError::TcpStreamError(e)),
                     };
                     if n == 0 {
-                        trace!("[{:?}] C->S EOF; shutting down server writer", this.session_id);
+                        trace!(
+                            "[{:?}] C->S EOF; shutting down server writer",
+                            this.session_id
+                        );
                         let _ = sw.shutdown().await; // signal EOF to container side
                         break Ok(());
                     }
@@ -97,7 +100,10 @@ impl TcpCapture {
                         Err(e) => break Err(CaptureError::TcpStreamError(e)),
                     };
                     if n == 0 {
-                        trace!("[{:?}] S->C EOF; shutting down client writer", this.session_id);
+                        trace!(
+                            "[{:?}] S->C EOF; shutting down client writer",
+                            this.session_id
+                        );
                         let _ = cw.shutdown().await; // signal EOF to client side
                         break Ok(());
                     }
@@ -126,20 +132,16 @@ impl TcpCapture {
         }
 
         while let Some(res) = set.join_next().await {
-            res.map_err(|e| CaptureError::TcpStreamError(io::Error::new(io::ErrorKind::Other, e)))??;
+            res.map_err(|e| {
+                CaptureError::TcpStreamError(io::Error::new(io::ErrorKind::Other, e))
+            })??;
         }
 
         trace!("[{:?}] tcp proxy completed", self.session_id);
         Ok(())
     }
 
-    pub fn get_artifacts(
-        &self,
-    ) -> (
-        Vec<u8>,
-        Vec<u8>,
-        Vec<(DateTime<Utc>, Direction, usize)>,
-    ) {
+    pub fn get_artifacts(&self) -> (Vec<u8>, Vec<u8>, Vec<(DateTime<Utc>, Direction, usize)>) {
         let a = self.client_to_container.lock().unwrap().clone();
         let b = self.container_to_client.lock().unwrap().clone();
         let t = self.timestamps.lock().unwrap().clone();
