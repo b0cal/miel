@@ -1,5 +1,5 @@
 use crate::configuration::config::Config;
-use crate::error_handling::types::{ConfigError, ControllerError};
+use crate::error_handling::types::ControllerError;
 use crate::network::{network_listener::NetworkListener, types::SessionRequest};
 use log::{debug, error};
 use std::net::Ipv4Addr;
