@@ -218,7 +218,7 @@ impl Storage for DatabaseStorage {
                         error!("DB write error in save_session update: {}", e);
                         StorageError::WriteFailed
                     })?;
-                    info!("Updated session {}", session_obj.id);
+                    info!("Updated a session");
                 }
                 None => {
                     // Use exec to avoid fetching inserted row (SQLite RETURNING may be unavailable)
@@ -229,7 +229,7 @@ impl Storage for DatabaseStorage {
                             error!("DB write error in save_session insert exec: {}", e);
                             StorageError::WriteFailed
                         })?;
-                    info!("Inserted session {}", session_obj.id);
+                    info!("Inserted a session");
                 }
             }
             Ok(())
@@ -291,11 +291,7 @@ impl Storage for DatabaseStorage {
                 error!("DB write error in save_interaction insert: {}", e);
                 StorageError::WriteFailed
             })?;
-            debug!(
-                "Inserted interaction ({} bytes) for session {}",
-                data.len(),
-                session_id
-            );
+            debug!("Inserted an interaction ({} bytes)", data.len());
             Ok(())
         })
     }
@@ -318,9 +314,8 @@ impl Storage for DatabaseStorage {
                 chunks += 1;
             }
             debug!(
-                "Concatenated {} interaction chunk(s) for session {}, total {} bytes",
+                "Concatenated {} interaction chunk(s), total {} bytes",
                 chunks,
-                session_id,
                 out.len()
             );
             Ok(out)
@@ -371,7 +366,7 @@ impl Storage for DatabaseStorage {
                         error!("DB write error in save_capture_artifacts update: {}", e);
                         StorageError::WriteFailed
                     })?;
-                    info!("Updated artifacts for session {}", id);
+                    info!("Updated artifacts for a session");
                 }
                 None => {
                     let am = art::ActiveModel {
@@ -388,7 +383,7 @@ impl Storage for DatabaseStorage {
                             );
                             StorageError::WriteFailed
                         })?;
-                    info!("Inserted artifacts for session {}", id);
+                    info!("Inserted artifacts for a session");
                 }
             }
             Ok(())
@@ -408,7 +403,7 @@ impl Storage for DatabaseStorage {
                 .ok_or(StorageError::ReadFailed)?;
             let artifacts: CaptureArtifacts =
                 serde_json::from_str(&m.json).map_err(|_| StorageError::ReadFailed)?;
-            debug!("Loaded artifacts for session {}", id);
+            debug!("Loaded artifacts from database");
             Ok(artifacts)
         })
     }

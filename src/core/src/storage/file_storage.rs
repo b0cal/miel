@@ -18,6 +18,22 @@ use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use uuid::Uuid;
 
+/// Replace potentially sensitive path components (such as UUID-like names) with a redacted token.
+fn sanitize_path(p: &Path) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for comp in p.components() {
+        let s = comp.as_os_str().to_string_lossy().to_string();
+        // Basic heuristic: redact components that look like UUIDs or files that embed them
+        let redact = s.len() >= 8 && s.contains('-');
+        if redact {
+            parts.push("[redacted]".to_string());
+        } else {
+            parts.push(s);
+        }
+    }
+    parts.join("/")
+}
+
 /// Storage backend that writes data to the local filesystem.
 ///
 /// Layout under the root directory:
@@ -64,7 +80,7 @@ impl FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        info!("FileStorage initialized at {}", base_path.display());
+        info!("FileStorage initialized");
 
         Ok(Self {
             base_path,
@@ -76,14 +92,14 @@ impl FileStorage {
     /// Create a `FileStorage` using `MIEL_FILE_STORAGE_DIR` if set, otherwise the current directory.
     pub fn new_default() -> Result<Self, StorageError> {
         if let Ok(dir) = std::env::var("MIEL_FILE_STORAGE_DIR") {
-            info!("Using FileStorage from MIEL_FILE_STORAGE_DIR: {}", dir);
+            info!("Using FileStorage from environment-defined directory");
             return Self::new(PathBuf::from(dir));
         }
         let cwd = std::env::current_dir().map_err(|e| {
             error!("Failed to get current dir: {}", e);
             StorageError::ReadFailed
         })?;
-        info!("Using FileStorage at current directory: {}", cwd.display());
+        info!("Using FileStorage at current directory");
         Self::new(cwd)
     }
 
@@ -104,7 +120,11 @@ impl FileStorage {
     fn write_session_file(&self, session: &Session) -> Result<(), StorageError> {
         let path = self.session_file_path(session.id);
         let mut f = File::create(&path).map_err(|e| {
-            error!("Failed to create session file {}: {}", path.display(), e);
+            error!(
+                "Failed to create session file {}: {}",
+                sanitize_path(&path),
+                e
+            );
             StorageError::WriteFailed
         })?;
         // Simple KV text format
@@ -165,7 +185,7 @@ impl FileStorage {
         if let Ok(mut idx) = self.session_index.lock() {
             idx.insert(session.id, path.clone());
         }
-        info!("Saved session {} to {}", session.id, path.display());
+        info!("Saved a session file");
         Ok(())
     }
 
@@ -174,7 +194,7 @@ impl FileStorage {
         File::open(path)
             .and_then(|mut f| f.read_to_string(&mut content))
             .map_err(|e| {
-                error!("Failed to read session file {}: {}", path.display(), e);
+                error!("Failed to read session file {}: {}", sanitize_path(path), e);
                 StorageError::ReadFailed
             })?;
         let mut map: HashMap<String, String> = HashMap::new();
@@ -259,7 +279,7 @@ impl FileStorage {
             "Completed" => crate::session_management::SessionStatus::Completed,
             _ => crate::session_management::SessionStatus::Error,
         };
-        debug!("Parsed session {} from {}", id, path.display());
+        debug!("Parsed a session file");
         Ok(Session {
             id,
             service_name,
@@ -281,11 +301,7 @@ impl Storage for FileStorage {
     fn get_sessions(&self, filter: Option<SessionFilter>) -> Result<Vec<Session>, StorageError> {
         let mut sessions = Vec::new();
         for entry in fs::read_dir(self.sessions_dir()).map_err(|e| {
-            error!(
-                "Failed to read sessions dir {}: {}",
-                self.sessions_dir().display(),
-                e
-            );
+            error!("Failed to read sessions dir: {}", e);
             StorageError::ReadFailed
         })? {
             let entry = entry.map_err(|e| {
@@ -349,14 +365,14 @@ impl Storage for FileStorage {
             .append(true)
             .open(&path)
             .map_err(|e| {
-                error!("Open append failed {}: {}", path.display(), e);
+                error!("Open append failed {}: {}", sanitize_path(&path), e);
                 StorageError::WriteFailed
             })?;
         f.write_all(data).map_err(|e| {
-            error!("Write failed {}: {}", path.display(), e);
+            error!("Write failed {}: {}", sanitize_path(&path), e);
             StorageError::WriteFailed
         })?;
-        debug!("Appended {} byte(s) to {}", data.len(), path.display());
+        debug!("Appended {} byte(s) to an interactions file", data.len());
         Ok(())
     }
 
@@ -366,21 +382,17 @@ impl Storage for FileStorage {
         File::open(&path)
             .and_then(|mut f| f.read_to_end(&mut buf))
             .map_err(|e| {
-                error!("Read failed {}: {}", path.display(), e);
+                error!("Read failed {}: {}", sanitize_path(&path), e);
                 StorageError::ReadFailed
             })?;
-        debug!("Read {} byte(s) from {}", buf.len(), path.display());
+        debug!("Read {} byte(s) from an interactions file", buf.len());
         Ok(buf)
     }
 
     fn cleanup_old_sessions(&self, older_than: DateTime<Utc>) -> Result<usize, StorageError> {
         let mut removed = 0usize;
         for entry in fs::read_dir(self.sessions_dir()).map_err(|e| {
-            error!(
-                "Failed to read sessions dir {}: {}",
-                self.sessions_dir().display(),
-                e
-            );
+            error!("Failed to read sessions dir: {}", e);
             StorageError::ReadFailed
         })? {
             let entry = entry.map_err(|e| {
@@ -394,36 +406,33 @@ impl Storage for FileStorage {
             if let Ok(sess) = self.parse_session_file(&path) {
                 let ts = sess.end_time.unwrap_or(sess.start_time);
                 if ts < older_than {
-                    // remove session file
                     let _ = fs::remove_file(&path);
-                    // remove interaction
                     let _ =
                         fs::remove_file(self.interactions_dir().join(format!("{}.bin", sess.id)));
-                    // remove artifacts dir
                     let _ = fs::remove_dir_all(self.artifacts_dir_for(sess.id));
                     removed += 1;
                 }
             }
         }
-        info!(
-            "Removed {} old session(s) (cutoff: {})",
-            removed,
-            older_than.to_rfc3339()
-        );
+        info!("Removed {} old session(s)", removed);
         Ok(removed)
     }
 
     fn save_capture_artifacts(&self, artifacts: &CaptureArtifacts) -> Result<(), StorageError> {
         let dir = self.artifacts_dir_for(artifacts.session_id);
         fs::create_dir_all(&dir).map_err(|e| {
-            error!("Failed to create artifacts dir {}: {}", dir.display(), e);
+            error!(
+                "Failed to create artifacts dir {}: {}",
+                sanitize_path(&dir),
+                e
+            );
             StorageError::WriteFailed
         })?;
         // tcp dirs
         let mut f = File::create(dir.join("tcp_client_to_container.bin")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
-                dir.join("tcp_client_to_container.bin").display(),
+                sanitize_path(&dir.join("tcp_client_to_container.bin")),
                 e
             );
             StorageError::WriteFailed
@@ -432,7 +441,7 @@ impl Storage for FileStorage {
             .map_err(|e| {
                 error!(
                     "Write failed: {}: {}",
-                    dir.join("tcp_client_to_container.bin").display(),
+                    sanitize_path(&dir.join("tcp_client_to_container.bin")),
                     e
                 );
                 StorageError::WriteFailed
@@ -440,7 +449,7 @@ impl Storage for FileStorage {
         let mut f = File::create(dir.join("tcp_container_to_client.bin")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
-                dir.join("tcp_container_to_client.bin").display(),
+                sanitize_path(&dir.join("tcp_container_to_client.bin")),
                 e
             );
             StorageError::WriteFailed
@@ -449,7 +458,7 @@ impl Storage for FileStorage {
             .map_err(|e| {
                 error!(
                     "Write failed: {}: {}",
-                    dir.join("tcp_container_to_client.bin").display(),
+                    sanitize_path(&dir.join("tcp_container_to_client.bin")),
                     e
                 );
                 StorageError::WriteFailed
@@ -458,7 +467,7 @@ impl Storage for FileStorage {
         let mut f = File::create(dir.join("stdio_stdin.bin")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
-                dir.join("stdio_stdin.bin").display(),
+                sanitize_path(&dir.join("stdio_stdin.bin")),
                 e
             );
             StorageError::WriteFailed
@@ -466,7 +475,7 @@ impl Storage for FileStorage {
         f.write_all(&artifacts.stdio_stdin).map_err(|e| {
             error!(
                 "Write failed: {}: {}",
-                dir.join("stdio_stdin.bin").display(),
+                sanitize_path(&dir.join("stdio_stdin.bin")),
                 e
             );
             StorageError::WriteFailed
@@ -474,7 +483,7 @@ impl Storage for FileStorage {
         let mut f = File::create(dir.join("stdio_stdout.bin")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
-                dir.join("stdio_stdout.bin").display(),
+                sanitize_path(&dir.join("stdio_stdout.bin")),
                 e
             );
             StorageError::WriteFailed
@@ -482,7 +491,7 @@ impl Storage for FileStorage {
         f.write_all(&artifacts.stdio_stdout).map_err(|e| {
             error!(
                 "Write failed: {}: {}",
-                dir.join("stdio_stdout.bin").display(),
+                sanitize_path(&dir.join("stdio_stdout.bin")),
                 e
             );
             StorageError::WriteFailed
@@ -490,7 +499,7 @@ impl Storage for FileStorage {
         let mut f = File::create(dir.join("stdio_stderr.bin")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
-                dir.join("stdio_stderr.bin").display(),
+                sanitize_path(&dir.join("stdio_stderr.bin")),
                 e
             );
             StorageError::WriteFailed
@@ -498,7 +507,7 @@ impl Storage for FileStorage {
         f.write_all(&artifacts.stdio_stderr).map_err(|e| {
             error!(
                 "Write failed: {}: {}",
-                dir.join("stdio_stderr.bin").display(),
+                sanitize_path(&dir.join("stdio_stderr.bin")),
                 e
             );
             StorageError::WriteFailed
@@ -507,7 +516,7 @@ impl Storage for FileStorage {
         let mut f = File::create(dir.join("tcp_timestamps.csv")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
-                dir.join("tcp_timestamps.csv").display(),
+                sanitize_path(&dir.join("tcp_timestamps.csv")),
                 e
             );
             StorageError::WriteFailed
@@ -520,7 +529,7 @@ impl Storage for FileStorage {
             writeln!(f, "{}, {}, {}", ts.to_rfc3339(), d, sz).map_err(|e| {
                 error!(
                     "Write failed: {}: {}",
-                    dir.join("tcp_timestamps.csv").display(),
+                    sanitize_path(&dir.join("tcp_timestamps.csv")),
                     e
                 );
                 StorageError::WriteFailed
@@ -529,7 +538,7 @@ impl Storage for FileStorage {
         let mut f = File::create(dir.join("stdio_timestamps.csv")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
-                dir.join("stdio_timestamps.csv").display(),
+                sanitize_path(&dir.join("stdio_timestamps.csv")),
                 e
             );
             StorageError::WriteFailed
@@ -543,7 +552,7 @@ impl Storage for FileStorage {
             writeln!(f, "{}, {}, {}", ts.to_rfc3339(), s, sz).map_err(|e| {
                 error!(
                     "Write failed: {}: {}",
-                    dir.join("stdio_timestamps.csv").display(),
+                    sanitize_path(&dir.join("stdio_timestamps.csv")),
                     e
                 );
                 StorageError::WriteFailed
@@ -551,27 +560,39 @@ impl Storage for FileStorage {
         }
         // meta
         let mut f = File::create(dir.join("meta.txt")).map_err(|e| {
-            error!("Create failed: {}: {}", dir.join("meta.txt").display(), e);
+            error!(
+                "Create failed: {}: {}",
+                sanitize_path(&dir.join("meta.txt")),
+                e
+            );
             StorageError::WriteFailed
         })?;
         writeln!(f, "session_id: {}", artifacts.session_id).map_err(|e| {
-            error!("Write failed: {}: {}", dir.join("meta.txt").display(), e);
+            error!(
+                "Write failed: {}: {}",
+                sanitize_path(&dir.join("meta.txt")),
+                e
+            );
             StorageError::WriteFailed
         })?;
         writeln!(f, "total_bytes: {}", artifacts.total_bytes).map_err(|e| {
-            error!("Write failed: {}: {}", dir.join("meta.txt").display(), e);
+            error!(
+                "Write failed: {}: {}",
+                sanitize_path(&dir.join("meta.txt")),
+                e
+            );
             StorageError::WriteFailed
         })?;
         // store duration as seconds
         writeln!(f, "duration_secs: {}", artifacts.duration.num_seconds()).map_err(|e| {
-            error!("Write failed: {}: {}", dir.join("meta.txt").display(), e);
+            error!(
+                "Write failed: {}: {}",
+                sanitize_path(&dir.join("meta.txt")),
+                e
+            );
             StorageError::WriteFailed
         })?;
-        info!(
-            "Saved artifacts for session {} in {}",
-            artifacts.session_id,
-            dir.display()
-        );
+        info!("Saved artifacts for a session");
         Ok(())
     }
 
@@ -583,7 +604,7 @@ impl Storage for FileStorage {
             File::open(&p)
                 .and_then(|mut f| f.read_to_end(&mut buf))
                 .map_err(|e| {
-                    error!("Read failed {}: {}", p.display(), e);
+                    error!("Read failed {}: {}", sanitize_path(&p), e);
                     StorageError::ReadFailed
                 })?;
             Ok(buf)
@@ -687,11 +708,7 @@ impl Storage for FileStorage {
             }
         }
         let duration = chrono::Duration::seconds(duration_secs);
-        info!(
-            "Loaded artifacts for session {} from {}",
-            session_id,
-            dir.display()
-        );
+        info!("Loaded artifacts for a session");
 
         Ok(CaptureArtifacts {
             session_id,
