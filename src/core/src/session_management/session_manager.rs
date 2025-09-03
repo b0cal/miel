@@ -121,32 +121,32 @@ impl SessionManager {
     }
 
     pub async fn cleanup_expired_sessions(&mut self) {
-        let expired_ids: Vec<_> = self
-            .active_sessions
-            .iter()
-            .filter_map(|(id, active_session)| {
-                if let Some(end_time) = active_session.session.end_time {
-                    if (Utc::now() - end_time).num_seconds()
-                        >= self.session_timeout.as_secs() as i64
-                    {
-                        Some(id.clone())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let now = Utc::now();
+        let timeout_secs = self.session_timeout.as_secs() as i64;
 
-        for id in expired_ids {
-            if let Some(mut active_session) = self.active_sessions.remove(&id) {
-                active_session.session.status = SessionStatus::Completed;
-                if let Some(container_handle) = active_session.container_handle.take() {
-                    let mut manager = self.container_manager.lock().await;
-                    if let Err(e) = manager.cleanup_container(container_handle).await {
-                        error!("failed to clean up container: {:?}", e);
-                    }
+        let mut expired = Vec::new();
+
+        self.active_sessions.retain(|id, session| {
+            let expired_session = session
+                .session
+                .end_time
+                .map(|end| (now - end).num_seconds() >= timeout_secs)
+                .unwrap_or(false);
+
+            if expired_session {
+                expired.push((id.clone(), session.container_handle.take()));
+                session.session.status = SessionStatus::Completed;
+                false // remove from map
+            } else {
+                true // keep in map
+            }
+        });
+
+        for (id, handle_opt) in expired {
+            if let Some(container_handle) = handle_opt {
+                let mut manager = self.container_manager.lock().await;
+                if let Err(e) = manager.cleanup_container(container_handle).await {
+                    error!("failed to clean up container for {}: {:?}", id, e);
                 }
             }
         }
@@ -172,7 +172,7 @@ impl SessionManager {
         request: SessionRequest,
         service_config: &ServiceConfig,
     ) -> Result<(Session, ContainerHandle), SessionError> {
-        if self.max_sessions == self.active_sessions.len() - 1 {
+        if self.max_sessions == self.active_sessions.len() {
             return Err(SessionError::CreationFailed);
         }
 
