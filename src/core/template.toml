@@ -5,14 +5,6 @@ web_ui_port = 8080
 max_sessions = 100
 session_timeout_secs = 3600
 
-[[services]]
-name = "http"
-port = 8000
-protocol = "TCP"
-container_image = "container_image"
-header_patterns = ["HTTP/1.1"]
-banner_response = "Welcome to our web service"
-
 [ip_filter]
 whitelist_mode = false
 

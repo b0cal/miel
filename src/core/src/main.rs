@@ -3,6 +3,7 @@ use log::{error, info};
 use miel::configuration::config::Config;
 use miel::controller::controller_handler::Controller;
 use std::path::Path;
+use tokio::signal;
 
 #[derive(Parser)]
 #[command(name = "miel")]
@@ -35,23 +36,24 @@ async fn main() {
 "
     );
 
-    info!("Importing configuration");
+    info!("== Configuration import ==");
 
     // Get command-line arguments
     let args = Args::parse();
 
     if args.config_file.is_empty() {
-        error!("No configuration file found");
+        error!("No configuration file found, exiting...");
         std::process::exit(1);
     }
 
     let config = Config::from_file(Path::new(args.config_file.as_str())).map_err(|e| {
-        error!("Unable to import configuration from file: {:?}", e);
+        error!("Unable to import configuration from file: {:?}, exiting", e);
         std::process::exit(1);
     });
 
     info!("Configuration imported successfully");
 
+    info!("== Controller configuration ==");
     let mut controller = Controller::new(config.unwrap())
         .map_err(|e| {
             error!(
@@ -62,24 +64,44 @@ async fn main() {
         })
         .unwrap();
 
-    let result = tokio::spawn(async move {
-        info!("Spawning the controller");
-        controller
-            .run()
-            .await
-            .map_err(|e| {
-                error!(
-                    "Error occured in the controller process: {:?}, exiting...",
-                    e
-                )
-            })
-            .unwrap();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
+
+    let controller_handle = tokio::spawn(async move {
+        if let Err(e) = controller.run(shutdown_rx).await {
+            error!("Error occured in the controller process: {:?}", e);
+        }
     });
 
-    let _ = result.await.map_err(|e| {
-        error!("Error joining at the end of execution: {:?}", e);
-        std::process::exit(1);
-    });
+    info!("Controller operational!");
+
+    match signal::ctrl_c().await {
+        Ok(()) => {
+            info!("Received Ctrl+C signal, intiating graceful shutdown...");
+        }
+        Err(e) => {
+            error!("Unable to listen for shutdown signal: {}", e);
+        }
+    }
+
+    info!("Shutdown signal received, signaling controller to stop...");
+
+    if let Err(e) = shutdown_tx.send(()) {
+        error!("Failed to send shutdown signal: {:?}", e);
+    }
+
+    match tokio::time::timeout(tokio::time::Duration::from_secs(10), controller_handle).await {
+        Ok(Ok(())) => {
+            info!("Controller stopped and shut down gracefully");
+        }
+        Ok(Err(e)) => {
+            error!("Controller task panicked: {:?}", e);
+        }
+        Err(_) => {
+            error!("Controller shutdown timed out, forcing termination...");
+        }
+    }
+
+    info!("Application shutdown complete");
 }
 
 #[cfg(test)]
