@@ -1,25 +1,10 @@
-use serde::Serialize;
+use super::types;
 use std::sync::Arc;
 use uuid::Uuid;
 use warp::{http::StatusCode, reply, Filter, Rejection, Reply};
 
 use super::ApiError;
-use crate::storage::storage_trait::Storage;
-
-#[derive(Serialize)]
-pub struct SessionResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub created_at: String, // ISO8601
-    pub status: String,
-}
-
-#[derive(Serialize)]
-pub struct ArtifactResponse {
-    pub logs: Vec<String>,
-    pub screenshots: Vec<String>, // URLs or base64
-    pub report_url: Option<String>,
-}
+use crate::{storage::storage_trait::Storage, web_interface::types::SessionResponse};
 
 /// GET /
 pub fn dashboard_route() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -48,7 +33,22 @@ pub fn list_sessions_route(
             async move {
                 match storage.get_sessions(None) {
                     Ok(list) => {
-                        Ok::<_, Rejection>(reply::with_status(reply::json(&list), StatusCode::OK))
+                        let response: Vec<SessionResponse> = list
+                            .into_iter()
+                            .map(|mut s| SessionResponse {
+                                id: s.id,
+                                service_name: s.service_name,
+                                client_addr: s.client_addr.to_string(),
+                                bytes_transfered: s.bytes_transferred,
+                                start_time: s.start_time.to_rfc3339(),
+                                end_time: s.end_time.take().map(|dt| dt.to_rfc3339()),
+                                status: s.status,
+                            })
+                            .collect();
+                        Ok::<_, Rejection>(reply::with_status(
+                            reply::json(&response),
+                            StatusCode::OK,
+                        ))
                     }
                     Err(_) => Ok::<_, Rejection>(reply::with_status(
                         reply::json(&ApiError {
