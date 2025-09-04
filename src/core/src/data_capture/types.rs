@@ -26,8 +26,8 @@ pub enum StdioStream {
 
 //// Aggregated capture artifacts persisted after a session completes.
 ///
-/// Binary payloads are stored directly; timestamp series provide lightweight
-/// metadata usable for replay or analysis.
+/// TCP payloads are stored as raw bytes for protocol analysis,
+/// while STDIO streams are stored as UTF-8 text for readability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaptureArtifacts {
     /// The related session identifier
@@ -36,12 +36,12 @@ pub struct CaptureArtifacts {
     pub tcp_client_to_container: Vec<u8>,
     /// Raw TCP payload captured from container to client
     pub tcp_container_to_client: Vec<u8>,
-    /// Raw stdin bytes
-    pub stdio_stdin: Vec<u8>,
-    /// Raw stdout bytes
-    pub stdio_stdout: Vec<u8>,
-    /// Raw stderr bytes
-    pub stdio_stderr: Vec<u8>,
+    /// Decoded stdin text
+    pub stdio_stdin: String,
+    /// Decoded stdout text
+    pub stdio_stdout: String,
+    /// Decoded stderr text
+    pub stdio_stderr: String,
     /// Timestamped sizes for TCP chunks
     pub tcp_timestamps: Vec<(DateTime<Utc>, Direction, usize)>,
     /// Timestamped sizes for STDIO chunks

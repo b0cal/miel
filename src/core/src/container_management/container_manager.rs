@@ -70,6 +70,23 @@ impl ContainerManager {
         Ok(manager)
     }
 
+    /// Creates a mock `ContainerManager` for testing that doesn't require root privileges.
+    #[cfg(test)]
+    pub fn new_mock() -> Self {
+        use log::debug;
+        debug!("Creating mock ContainerManager for testing");
+
+        ContainerManager {
+            runtime: Runtime::SystemdNspawn,
+            active_containers: HashMap::new(),
+            stats: ContainerStats {
+                active_count: 0,
+                total_created: 0,
+                failed_count: 0,
+            },
+        }
+    }
+
     /// Best-effort check for root privileges (EUID == 0).
     fn is_running_as_root() -> bool {
         let is_root = if let Ok(output) = std::process::Command::new("id").arg("-u").output() {

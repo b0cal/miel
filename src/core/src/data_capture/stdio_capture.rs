@@ -256,10 +256,9 @@ mod tests {
         cap.capture_activity_log_from_path(&path).unwrap();
 
         let (stdin_b, stdout_b, stderr_b, ts) = cap.get_artifacts();
-        let stdin_s = String::from_utf8(stdin_b).unwrap();
-        let stdout_s = String::from_utf8(stdout_b).unwrap();
-        let stderr_s = String::from_utf8(stderr_b).unwrap();
-
+        let stdin_s = String::from_utf8_lossy(&stdin_b);
+        let stdout_s = String::from_utf8_lossy(&stdout_b);
+        let stderr_s = String::from_utf8_lossy(&stderr_b);
         assert!(stdin_s.contains("ls\n"));
         assert!(stdin_s.contains("pwd\n"));
         assert!(stdin_s.contains("exit\n"));
@@ -284,10 +283,9 @@ mod tests {
         cap.capture_activity_log_from_path(&path).unwrap();
 
         let (stdin_b, stdout_b, stderr_b, ts) = cap.get_artifacts();
-        let stdin_s = String::from_utf8(stdin_b).unwrap();
-        let stdout_s = String::from_utf8(stdout_b).unwrap();
-        let stderr_s = String::from_utf8(stderr_b).unwrap();
-
+        let stdin_s = String::from_utf8_lossy(&stdin_b);
+        let stdout_s = String::from_utf8_lossy(&stdout_b);
+        let stderr_s = String::from_utf8_lossy(&stderr_b);
         assert!(stdout_s.contains("Server listening on 127.0.0.1:38959\n"));
         assert!(stdin_s.contains("GET / HTTP/1.1\n"));
         assert!(stderr_s.is_empty());
@@ -337,10 +335,9 @@ mod tests {
         cap.capture_activity_log_from_path(&path).unwrap();
 
         let (stdin_b, stdout_b, stderr_b, ts) = cap.get_artifacts();
-        let stdin_s = String::from_utf8(stdin_b).unwrap();
-        let stdout_s = String::from_utf8(stdout_b).unwrap();
-        let stderr_s = String::from_utf8(stderr_b).unwrap();
-
+        let stdin_s = String::from_utf8_lossy(&stdin_b);
+        let stdout_s = String::from_utf8_lossy(&stdout_b);
+        let stderr_s = String::from_utf8_lossy(&stderr_b);
         // Check that several commands were captured
         assert!(stdin_s.contains("ls \n") || stdin_s.contains("ls\n"));
         assert!(stdin_s.contains("w \n") || stdin_s.contains("w\n"));
@@ -373,10 +370,9 @@ mod tests {
         cap.capture_activity_log_from_path(&path).unwrap();
 
         let (stdin_b, stdout_b, stderr_b, ts) = cap.get_artifacts();
-        let stdin_s = String::from_utf8(stdin_b).unwrap();
-        let stdout_s = String::from_utf8(stdout_b).unwrap();
-        let stderr_s = String::from_utf8(stderr_b).unwrap();
-
+        let stdin_s = String::from_utf8_lossy(&stdin_b);
+        let stdout_s = String::from_utf8_lossy(&stdout_b);
+        let stderr_s = String::from_utf8_lossy(&stderr_b);
         assert!(stdin_s.contains("echo hello\n"));
         assert!(stdout_s.contains("world\n"));
         assert!(stderr_s.is_empty());

@@ -150,7 +150,7 @@ impl DatabaseStorage {
         Ok(Self { conn })
     }
 
-    fn to_session_model(s: &Session) -> session::ActiveModel {
+    fn session_to_model(s: &Session) -> session::ActiveModel {
         session::ActiveModel {
             id: Set(s.id.to_string()),
             service_name: Set(s.service_name.clone()),
@@ -203,7 +203,7 @@ impl DatabaseStorage {
 
 impl Storage for DatabaseStorage {
     fn save_session(&self, session_obj: &Session) -> Result<(), StorageError> {
-        let mut am = Self::to_session_model(session_obj);
+        let mut am = Self::session_to_model(session_obj);
         let conn = self.conn.clone();
         let session_id = session_obj.id.to_string();
 
@@ -452,7 +452,7 @@ mod tests {
         DatabaseStorage::new_file(path).await.unwrap()
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_db_session_and_filter() {
         let storage = temp_db().await;
         let now = Utc::now();
@@ -485,7 +485,7 @@ mod tests {
         assert_eq!(none.len(), 0);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_db_interactions_roundtrip() {
         let storage = temp_db().await;
         let id = Uuid::new_v4();
@@ -507,7 +507,7 @@ mod tests {
         assert_eq!(data, b"abcdef");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_db_artifacts_roundtrip_and_cleanup() {
         let storage = temp_db().await;
         let id = Uuid::new_v4();
@@ -527,9 +527,9 @@ mod tests {
             session_id: id,
             tcp_client_to_container: vec![1, 2],
             tcp_container_to_client: vec![3, 4],
-            stdio_stdin: vec![5],
-            stdio_stdout: vec![6],
-            stdio_stderr: vec![7],
+            stdio_stdin: "input".to_string(),
+            stdio_stdout: "output".to_string(),
+            stdio_stderr: "errors".to_string(),
             tcp_timestamps: vec![],
             stdio_timestamps: vec![],
             total_bytes: 5,

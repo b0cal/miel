@@ -118,9 +118,9 @@ async fn main() {
         session_id,
         tcp_client_to_container: vec![1, 2, 3],
         tcp_container_to_client: vec![4, 5, 6],
-        stdio_stdin: b"input".to_vec(),
-        stdio_stdout: b"output".to_vec(),
-        stdio_stderr: b"error".to_vec(),
+        stdio_stdin: "input".to_string(),
+        stdio_stdout: "output".to_string(),
+        stdio_stderr: "error".to_string(),
         tcp_timestamps: vec![],
         stdio_timestamps: vec![],
         total_bytes: 6,
@@ -199,7 +199,7 @@ async fn main() {
     }
 
     // Artifacts content preview
-    let stdout_db = String::from_utf8_lossy(&fetched_db.stdio_stdout);
+    let stdout_db = &fetched_db.stdio_stdout;
     let preview = stdout_db.chars().take(64).collect::<String>();
     info!(
         "Artifacts preview (DB stdout, first <=64 chars): {}{}",

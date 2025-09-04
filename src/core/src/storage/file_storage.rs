@@ -474,7 +474,7 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        f.write_all(&artifacts.stdio_stdin).map_err(|e| {
+        f.write_all(artifacts.stdio_stdin.as_bytes()).map_err(|e| {
             error!(
                 "Write failed: {}: {}",
                 sanitize_path(&dir.join("stdio_stdin.bin")),
@@ -490,7 +490,7 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        f.write_all(&artifacts.stdio_stdout).map_err(|e| {
+        f.write_all(artifacts.stdio_stdout.as_bytes()).map_err(|e| {
             error!(
                 "Write failed: {}: {}",
                 sanitize_path(&dir.join("stdio_stdout.bin")),
@@ -506,7 +506,7 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        f.write_all(&artifacts.stdio_stderr).map_err(|e| {
+        f.write_all(artifacts.stdio_stderr.as_bytes()).map_err(|e| {
             error!(
                 "Write failed: {}: {}",
                 sanitize_path(&dir.join("stdio_stderr.bin")),
@@ -716,9 +716,9 @@ impl Storage for FileStorage {
             session_id,
             tcp_client_to_container,
             tcp_container_to_client,
-            stdio_stdin,
-            stdio_stdout,
-            stdio_stderr,
+            stdio_stdin: String::from_utf8_lossy(&stdio_stdin).to_string(),
+            stdio_stdout: String::from_utf8_lossy(&stdio_stdout).to_string(),
+            stdio_stderr: String::from_utf8_lossy(&stdio_stderr).to_string(),
             tcp_timestamps,
             stdio_timestamps,
             total_bytes,
@@ -789,9 +789,9 @@ mod tests {
             session_id: id,
             tcp_client_to_container: b"c2s".to_vec(),
             tcp_container_to_client: b"s2c".to_vec(),
-            stdio_stdin: b"in".to_vec(),
-            stdio_stdout: b"out".to_vec(),
-            stdio_stderr: b"err".to_vec(),
+            stdio_stdin: "in".to_string(),
+            stdio_stdout: "out".to_string(),
+            stdio_stderr: "err".to_string(),
             tcp_timestamps: vec![
                 (now, Direction::ClientToContainer, 3),
                 (now, Direction::ContainerToClient, 3),

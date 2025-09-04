@@ -27,7 +27,8 @@ pub struct Controller {
 impl Controller {
     pub async fn new(config: Config) -> Result<Self, ControllerError> {
         let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new().unwrap()));
-        let storage: Arc<dyn Storage + Send + Sync> = Arc::new(DatabaseStorage::new().await.unwrap());
+        let storage: Arc<dyn Storage + Send + Sync> =
+            Arc::new(DatabaseStorage::new().await.unwrap());
         let session_manager = SessionManager::new(
             container_manager.clone(),
             storage.clone(),
@@ -141,25 +142,36 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_session_request(&mut self, request: SessionRequest) -> Result<(), SessionError> {
+    async fn handle_session_request(
+        &mut self,
+        request: SessionRequest,
+    ) -> Result<(), SessionError> {
         info!("Session request received from {}", request.client_addr);
         info!("Service detected as: {:?}", request.service_name);
 
         // Clone the config to avoid holding a reference to self
-        let service = self.find_config_for_service(&request.service_name)
+        let service = self
+            .find_config_for_service(&request.service_name)
             .cloned()
             .unwrap();
 
         // Handle the session and trigger capture lifecycle
-        self.session_manager.handle_session(request, &service).await?;
+        self.session_manager
+            .handle_session(request, &service)
+            .await?;
 
         info!("Session handling completed with capture lifecycle initialized");
         Ok(())
     }
 
     /// Manually trigger capture finalization for a specific session
-    async fn finalize_session_capture(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
-        self.session_manager.finalize_session_capture(session_id).await
+    pub async fn finalize_session_capture(
+        &mut self,
+        session_id: &uuid::Uuid,
+    ) -> Result<(), SessionError> {
+        self.session_manager
+            .finalize_session_capture(session_id)
+            .await
     }
 
     /// Manually end a session and finalize its capture
@@ -168,17 +180,96 @@ impl Controller {
     }
 
     /// Get session statistics including capture information
-    pub fn get_session_stats(&self, session_id: &uuid::Uuid) -> Option<(crate::SessionStatus, u64, chrono::Duration)> {
+    pub fn get_session_stats(
+        &self,
+        session_id: &uuid::Uuid,
+    ) -> Option<(crate::SessionStatus, u64, chrono::Duration)> {
         self.session_manager.get_session_stats(session_id)
     }
 
     /// Trigger stdio capture for a specific session
-    pub async fn trigger_stdio_capture(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+    pub async fn trigger_stdio_capture(
+        &mut self,
+        session_id: &uuid::Uuid,
+    ) -> Result<(), SessionError> {
         self.session_manager.trigger_stdio_capture(session_id).await
+    }
+
+    /// Called when a connection drops or times out to ensure proper capture finalization
+    pub async fn on_session_end(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+        info!("Finalizing session {} due to connection end", session_id);
+        self.finalize_session_capture(session_id).await
+    }
+
+    /// Called periodically to clean up expired sessions and finalize their captures
+    pub async fn cleanup_and_finalize_expired_sessions(&mut self) -> Result<(), SessionError> {
+        info!("Running periodic session cleanup and capture finalization");
+        self.cleanup_expired_sessions().await
+    }
+
+    /// Get access to the storage backend for direct database operations
+    pub fn get_storage(&self) -> Arc<dyn Storage + Send + Sync> {
+        self.storage.clone()
+    }
+
+    /// Get access to the container manager for direct container operations
+    pub fn get_container_manager(&self) -> Arc<tokio::sync::Mutex<ContainerManager>> {
+        self.container_manager.clone()
+    }
+
+    /// Get all sessions using optional filtering
+    pub fn get_sessions(
+        &self,
+        filter: Option<crate::storage::types::SessionFilter>,
+    ) -> Result<Vec<crate::session::Session>, crate::error_handling::types::StorageError> {
+        self.storage.get_sessions(filter)
+    }
+
+    /// Cleanup expired sessions manually
+    pub async fn cleanup_expired_sessions(&mut self) -> Result<(), SessionError> {
+        self.session_manager.cleanup_expired_sessions().await;
+        Ok(())
     }
 
     fn find_config_for_service(&self, service_name: &str) -> Option<&ServiceConfig> {
         self.config.services.iter().find(|s| s.name == service_name)
+    }
+
+    #[cfg(test)]
+    async fn new_for_test(config: Config) -> Result<Self, ControllerError> {
+        use crate::storage::file_storage::FileStorage;
+        use tempfile::TempDir;
+
+        // Create a temporary directory for test storage
+        let temp_dir = TempDir::new().map_err(|_| {
+            ControllerError::Storage(crate::error_handling::types::StorageError::WriteFailed)
+        })?;
+        let temp_path = temp_dir.path().to_path_buf();
+        // Leak the temp dir to keep it alive for the test duration
+        std::mem::forget(temp_dir);
+
+        // Use file storage for tests to avoid database complexity
+        let storage: Arc<dyn Storage + Send + Sync> =
+            Arc::new(FileStorage::new(temp_path).map_err(|e| ControllerError::Storage(e))?);
+
+        // Create a mock container manager that doesn't require root privileges
+        let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new_mock()));
+
+        let session_manager = SessionManager::new(
+            container_manager.clone(),
+            storage.clone(),
+            config.max_sessions,
+        );
+
+        Ok(Self {
+            config,
+            listener: None,
+            session_rx: None,
+            listener_handle: None,
+            container_manager,
+            session_manager,
+            storage,
+        })
     }
 }
 
@@ -288,7 +379,7 @@ mod tests {
             port
         );
 
-        let mut controller = Controller::new(config).await.unwrap();
+        let mut controller = Controller::new_for_test(config).await.unwrap();
         debug!("Controller initialized");
 
         debug!("Starting controller...");
