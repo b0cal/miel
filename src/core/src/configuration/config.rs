@@ -1,7 +1,7 @@
 use super::types::*;
 use crate::error_handling::types::ConfigError;
 use clap::Parser;
-use log::error;
+use log::{error, info};
 use regex::Regex;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -161,6 +161,7 @@ impl Config {
         if Path::new(&service_path).exists() {
             //TODO: might wanna remove this (we keep it because the services default are not
             //currently in files but in the Config::default())
+            info!("Service configuration found in services/ directory");
             config.services.clear();
             for entry in fs::read_dir(&service_path).map_err(ConfigError::IoError)? {
                 let entry = entry.map_err(ConfigError::IoError)?;
@@ -170,6 +171,10 @@ impl Config {
                         fs::read_to_string(&path).map_err(ConfigError::IoError)?;
                     let service: ServiceConfig = toml::from_str(&service_content)
                         .map_err(|e| ConfigError::TomlError(e.to_string()))?;
+                    info!(
+                        "[+] New service {} on port {} imported",
+                        service.name, service.port
+                    );
                     config.services.push(service);
                 }
             }
@@ -679,7 +684,6 @@ mod tests {
         }
     }
 }
-
 #[cfg(test)]
 mod tests_from_file {
     use super::*;
