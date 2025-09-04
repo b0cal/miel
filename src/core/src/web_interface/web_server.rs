@@ -1,5 +1,8 @@
 use std::net::SocketAddr;
+use std::panic;
 use std::sync::Arc;
+
+use log::{error, info};
 
 use super::routes::*;
 use crate::error_handling::types::WebError;
@@ -37,8 +40,11 @@ impl WebServer {
             .or(get_session_data)
             .or(download_artifacts);
 
-        // Start server (warp 0.4)
         let addr: SocketAddr = ([0, 0, 0, 0], port).into();
+
+        info!("WebUI starting on port {}", port);
+
+        //WARN: will crash the whole program if the web server cannot run
         warp::serve(routes).run(addr).await;
 
         Ok(())

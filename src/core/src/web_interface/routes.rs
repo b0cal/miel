@@ -8,14 +8,12 @@ use crate::storage::storage_trait::Storage;
 
 /// GET /
 pub fn dashboard_route() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    let webui_path = "../../../webui/";
+    let webui_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../webui/dist");
 
-    // Redirect / to /index.html
     let redirect_root = warp::path::end()
         .and(warp::get())
         .map(|| warp::redirect::temporary(warp::http::Uri::from_static("/index.html")));
 
-    // Serve all static files from webui/
     let static_files = warp::fs::dir(webui_path);
 
     redirect_root.or(static_files)
@@ -25,7 +23,7 @@ pub fn dashboard_route() -> impl Filter<Extract = impl Reply, Error = Rejection>
 pub fn list_sessions_route(
     storage: Arc<dyn Storage + Send + Sync>,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    warp::path("sessions")
+    warp::path!("api" / "sessions")
         .and(warp::path::end())
         .and(warp::get())
         .and(warp::query::<SessionFilter>())
@@ -55,7 +53,7 @@ pub fn list_sessions_route(
 pub fn get_session_data_route(
     storage: Arc<dyn Storage + Send + Sync>,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    warp::path!("sessions" / String / "data")
+    warp::path!("api" / "sessions" / String / "data")
         .and(warp::get())
         .and_then(move |id_str: String| {
             let storage = storage.clone();
@@ -102,7 +100,7 @@ pub fn get_session_data_route(
 pub fn download_artifacts_route(
     storage: Arc<dyn Storage + Send + Sync>,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    warp::path!("sessions" / String / "artifacts")
+    warp::path!("api" / "sessions" / String / "artifacts")
         .and(warp::get())
         .and_then(move |id_str: String| {
             let storage = storage.clone();
