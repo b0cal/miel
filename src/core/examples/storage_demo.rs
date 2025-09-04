@@ -12,7 +12,8 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Initialize logger (RUST_LOG can override; default to info)
     let _ = env_logger::Builder::from_env(Env::default().default_filter_or("info")).try_init();
 
@@ -30,14 +31,14 @@ fn main() {
     // Backends: prefer environment variables if present
     let storage_db = if env::var("MIEL_DB_PATH").is_ok() {
         info!("Using DatabaseStorage::new() with MIEL_DB_PATH");
-        DatabaseStorage::new().expect("create db (env)")
+        DatabaseStorage::new().await.expect("create db (env)")
     } else {
         let db_path = out_dir.join("storage_demo.sqlite3");
         info!(
             "Using DatabaseStorage at {} (no MIEL_DB_PATH)",
             db_path.display()
         );
-        DatabaseStorage::new_file(&db_path).expect("create db (file)")
+        DatabaseStorage::new_file(&db_path).await.expect("create db (file)")
     };
 
     let storage_fs = if env::var("MIEL_FILE_STORAGE_DIR").is_ok() {
