@@ -22,7 +22,8 @@ use crate::storage::db_entities as session;
 use crate::storage::db_entities::artifacts as art;
 use crate::storage::db_entities::interactions as inter;
 use crate::storage::storage_trait::Storage;
-use crate::storage::types::{CaptureArtifacts, Session, SessionFilter};
+use crate::storage::types::{CaptureArtifacts, SessionFilter};
+use crate::session::Session;
 
 /// Storage backend that uses SQLite via SeaORM.
 ///

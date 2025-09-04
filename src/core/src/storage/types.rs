@@ -4,39 +4,11 @@
 //! implementations. These types are serializable and suitable for both
 //! database and filesystem persistence.
 
+use crate::session_management::SessionStatus;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use uuid::Uuid;
-
-// FIXME: use actual types once they are correctly exported from their modules
-
-// Reuse the SessionStatus enum from session_management
-use crate::session_management::SessionStatus;
-
-/// Represents a captured service session.
-///
-/// A session is the top-level record tying together connection metadata,
-/// lifecycle timestamps, traffic accounting, and final status.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Session {
-    /// Unique identifier for the session
-    pub id: Uuid,
-    /// Service name inferred or configured (e.g. "ssh", "http")
-    pub service_name: String,
-    /// Client socket address (IP:port)
-    pub client_addr: SocketAddr,
-    /// Session start time (UTC)
-    pub start_time: DateTime<Utc>,
-    /// Session end time (UTC), if known
-    pub end_time: Option<DateTime<Utc>>,
-    /// Optional container identifier running the service
-    pub container_id: Option<String>,
-    /// Total number of bytes transferred during the session
-    pub bytes_transferred: u64,
-    /// Final status of the session
-    pub status: SessionStatus,
-}
 
 /// Direction of TCP traffic in a capture artifact.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -11,9 +11,10 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::session::Session;
 use crate::error_handling::types::StorageError;
 use crate::storage::storage_trait::Storage;
-use crate::storage::types::{CaptureArtifacts, Direction, Session, SessionFilter, StdioStream};
+use crate::storage::types::{CaptureArtifacts, Direction, SessionFilter, StdioStream};
 use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use uuid::Uuid;

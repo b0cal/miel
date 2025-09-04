@@ -11,7 +11,8 @@
 //! All methods return a `Result` to handle potential storage errors.
 
 use crate::error_handling::types::StorageError;
-use crate::storage::types::{CaptureArtifacts, Session, SessionFilter};
+use crate::session::Session;
+use crate::storage::types::{CaptureArtifacts, SessionFilter};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
