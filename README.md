@@ -71,17 +71,17 @@ cargo build
 ```
 
 2. At the first start-up an example config will be generated in `example/template.toml`. Feel free to play with it and use it to start the app
+> [!NOTE]
+> super user rights are needed to process the service containers
 ```sh
 sudo miel <PATH_TO_CONFIG>
 ```
 
->[!INFO]
-> super user rights are needed to process the service containers
-
 3. If you enabled the web interface go on http://localhost:3000 to view the dashboard or use the documented [web API](./docs/development/web_api.md) to fetch the data collected for further analysis
 
-
->[!EXAMPLE]
+> [!TIP]
+>**EXAMPLES:**
+>
 > Get all sessions basic data
 > ```sh
 > wget http://localhost:3000/api/sessions
