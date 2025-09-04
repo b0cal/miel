@@ -19,23 +19,10 @@ pub mod session_manager;
 /// - `Active`: The session is currently active.
 /// - `Completed`: The session has finished successfully.
 /// - `Error`: The session encountered an error.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SessionStatus {
     Pending,
     Active,
     Completed,
     Error,
-}
-
-impl PartialEq for &SessionStatus {
-    /// Custom equality check for SessionStatus references.
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (SessionStatus::Pending, SessionStatus::Pending)
-                | (SessionStatus::Active, SessionStatus::Active)
-                | (SessionStatus::Completed, SessionStatus::Completed)
-                | (SessionStatus::Error, SessionStatus::Error)
-        )
-    }
 }

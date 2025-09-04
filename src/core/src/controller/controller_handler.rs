@@ -19,17 +19,17 @@ pub struct Controller {
     listener: Option<NetworkListener>,
     session_rx: Option<mpsc::Receiver<SessionRequest>>,
     storage: Arc<dyn Storage + Send + Sync>,
-    container_manager: ContainerManager,
+    container_manager: Arc<tokio::sync::Mutex<ContainerManager>>,
     session_manager: SessionManager,
     listener_handle: Option<JoinHandle<()>>,
 }
 
 impl Controller {
     pub async fn new(config: Config) -> Result<Self, ControllerError> {
-        let container_manager = ContainerManager::new().unwrap();
+        let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new().unwrap()));
         let storage: Arc<dyn Storage + Send + Sync> = Arc::new(DatabaseStorage::new().await.unwrap());
         let session_manager = SessionManager::new(
-            Arc::new(tokio::sync::Mutex::new(container_manager.clone())),
+            container_manager.clone(),
             storage.clone(),
             config.max_sessions,
         );
@@ -108,6 +108,11 @@ impl Controller {
     pub async fn shutdown(&mut self) -> Result<(), ControllerError> {
         info!("Starting Controller shutdown...");
 
+        // First, shutdown all active sessions and save them to database
+        if let Err(e) = self.session_manager.shutdown_all_sessions().await {
+            error!("Failed to shutdown sessions gracefully: {:?}", e);
+        }
+
         if let Some(listener) = &mut self.listener {
             if let Err(e) = listener.shutdown().await {
                 error!("Failed to shutdown NetworkListener gracefully: {:?}", e);
@@ -158,17 +163,17 @@ impl Controller {
     }
 
     /// Manually end a session and finalize its capture
-    async fn end_session(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+    pub async fn end_session(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
         self.session_manager.end_session(session_id).await
     }
 
     /// Get session statistics including capture information
-    fn get_session_stats(&self, session_id: &uuid::Uuid) -> Option<(crate::SessionStatus, u64, chrono::Duration)> {
+    pub fn get_session_stats(&self, session_id: &uuid::Uuid) -> Option<(crate::SessionStatus, u64, chrono::Duration)> {
         self.session_manager.get_session_stats(session_id)
     }
 
     /// Trigger stdio capture for a specific session
-    async fn trigger_stdio_capture(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+    pub async fn trigger_stdio_capture(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
         self.session_manager.trigger_stdio_capture(session_id).await
     }
 

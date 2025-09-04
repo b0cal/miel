@@ -86,6 +86,14 @@ impl SessionManager {
         let (session, container_handle) = self.create_session(request, service_config).await?;
         let id = session.id;
 
+        // Save the new session to the database before creating ActiveSession
+        if let Err(e) = self.storage.save_session(&session) {
+            error!("Failed to save session {} to database: {:?}", id, e);
+            // Continue anyway, session can still proceed
+        } else {
+            info!("Session {} saved to database", id);
+        }
+
         let mut active_session = ActiveSession {
             session,
             container_handle: Some(container_handle),
@@ -168,15 +176,17 @@ impl SessionManager {
 
     pub async fn shutdown_all_sessions(&mut self) -> Result<(), SessionError> {
         let session_ids: Vec<Uuid> = self.active_sessions.keys().cloned().collect();
+        info!("Shutting down {} active sessions", session_ids.len());
 
         // End all sessions, which will finalize captures and cleanup containers
-        for session_id in session_ids {
-            if let Err(e) = self.end_session(&session_id).await {
+        for session_id in &session_ids {
+            if let Err(e) = self.end_session(session_id).await {
                 error!("Failed to shutdown session {}: {:?}", session_id, e);
             }
         }
 
         self.active_sessions.clear();
+        info!("All sessions shutdown and saved to database");
         Ok(())
     }
 
@@ -184,6 +194,13 @@ impl SessionManager {
     pub async fn finalize_session_capture(&mut self, session_id: &Uuid) -> Result<(), SessionError> {
         if let Some(active_session) = self.active_sessions.get_mut(session_id) {
             active_session.session.end_time = Some(Utc::now());
+
+            // First, save the updated session to ensure it exists in the database
+            if let Err(e) = self.storage.save_session(&active_session.session) {
+                error!("Failed to save session {} before finalizing capture: {:?}", session_id, e);
+                active_session.session.status = SessionStatus::Error;
+                return Err(SessionError::CreationFailed);
+            }
 
             let recorder = active_session.stream_recorder.lock().await;
             match recorder.finalize_capture() {
@@ -193,11 +210,24 @@ impl SessionManager {
 
                     // Update session with capture statistics
                     active_session.session.bytes_transferred = artifacts.total_bytes;
+
+                    // Save the updated session again with the final byte count
+                    if let Err(e) = self.storage.save_session(&active_session.session) {
+                        error!("Failed to update session {} with final statistics: {:?}", session_id, e);
+                        // Continue anyway as the capture was successful
+                    }
+
                     Ok(())
                 }
                 Err(e) => {
                     error!("Failed to finalize capture for session {}: {:?}", session_id, e);
                     active_session.session.status = SessionStatus::Error;
+
+                    // Save the error status to database
+                    if let Err(save_err) = self.storage.save_session(&active_session.session) {
+                        error!("Failed to save error status for session {}: {:?}", session_id, save_err);
+                    }
+
                     Err(SessionError::CaptureError(e))
                 }
             }
@@ -212,6 +242,13 @@ impl SessionManager {
         if let Some(mut active_session) = self.active_sessions.remove(session_id) {
             // Finalize capture
             active_session.session.end_time = Some(Utc::now());
+
+            // First, save the session with end_time to ensure it exists in the database
+            if let Err(e) = self.storage.save_session(&active_session.session) {
+                error!("Failed to save session {} before finalizing capture: {:?}", session_id, e);
+                active_session.session.status = SessionStatus::Error;
+            }
+
             let recorder = active_session.stream_recorder.lock().await;
 
             match recorder.finalize_capture() {
@@ -226,7 +263,11 @@ impl SessionManager {
                 }
             }
 
-            active_session.session.status = SessionStatus::Completed;
+            active_session.session.status = if active_session.session.status != SessionStatus::Error {
+                SessionStatus::Completed
+            } else {
+                SessionStatus::Error
+            };
 
             // Clean up container if present
             if let Some(container_handle) = active_session.container_handle.take() {
@@ -236,6 +277,14 @@ impl SessionManager {
             }
 
             info!("Session {} ended and cleaned up successfully", session_id);
+
+            // Update the session in the database with final status and statistics
+            if let Err(e) = self.storage.save_session(&active_session.session) {
+                error!("Failed to update session {} in database: {:?}", session_id, e);
+            } else {
+                info!("Session {} status updated in database", session_id);
+            }
+
             Ok(())
         } else {
             Err(SessionError::NotFound)
