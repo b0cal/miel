@@ -150,7 +150,7 @@ class ApiService {
 
 
   async getAvgPacketPerHour() {
-    const timeline = await self.getByteTransferTimeline() 
+    const timeline = await this.getByteTransferTimeline()
 
     const totalBytesTransfered = timeline.reduce((acc, bytes) => acc + bytes, 0)
 

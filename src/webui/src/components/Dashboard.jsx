@@ -49,7 +49,7 @@ const Dashboard = () => {
 
   const fetchTopThreats = async () => {
     try {
-      const data = await apiService.getTopThreats()
+      const data = await apiService.getClientAddressesOrdered()
       setTopThreats(data)
       
     } catch (error) {
