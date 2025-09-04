@@ -804,7 +804,7 @@ mod tests_from_file {
 
         assert_eq!(config.bind_address, "10.0.0.5");
         assert!(!config.web_ui_enabled); // from default
-        assert_eq!(config.web_ui_port, 8080); // from default
+        assert_eq!(config.web_ui_port, 3000); // from default
         assert_eq!(config.max_sessions, 100); // from default
         assert_eq!(config.session_timeout_secs, 3600);
         assert_eq!(config.ip_filter, IpFilter::default());
