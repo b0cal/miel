@@ -11,7 +11,7 @@
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "mocha **/*.test.js",
+    "test": "mocha src/*.test.js",
     "test:watch": "mocha **/*.test.js --watch",
     "lint": "eslint . --ext js,jsx,ts,tsx",
     "lint:fix": "eslint . --ext js,jsx,ts,tsx --fix",
