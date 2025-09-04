@@ -754,6 +754,8 @@ mod tests_from_file {
             protocol = "UDP"
             container_image = "dns-container"
             enabled = true
+            header_patterns = []
+            banner_response = "DNS Server v1.0"
         "#;
         write_toml_file(&services_dir.join("dns.toml"), service1);
 
@@ -764,6 +766,7 @@ mod tests_from_file {
             protocol = "TCP"
             container_image = "ftp-container"
             enabled = false
+            header_patterns = ["USER", "PASS"]
         "#;
         write_toml_file(&services_dir.join("ftp.toml"), service2);
 
