@@ -1,15 +1,17 @@
 use crate::configuration::config::Config;
 use crate::error_handling::types::ControllerError;
 use crate::network::{network_listener::NetworkListener, types::SessionRequest};
-use log::{debug, error};
+use log::{error, info};
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 pub struct Controller {
     // Fields for the Controller struct
     config: Config,
     listener: Option<NetworkListener>,
     session_rx: Option<mpsc::Receiver<SessionRequest>>,
+    listener_handle: Option<JoinHandle<()>>,
 }
 
 impl Controller {
@@ -18,41 +20,97 @@ impl Controller {
             config,
             listener: None,
             session_rx: None,
+            listener_handle: None,
         })
     }
 
-    pub async fn run(&mut self) -> Result<(), ControllerError> {
+    pub async fn run(
+        &mut self,
+        mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+    ) -> Result<(), ControllerError> {
         let (tx, rx) = mpsc::channel(100);
         self.session_rx = Some(rx);
 
-        debug!("In run: binding address is {}", self.config.bind_address);
-
         self.listener = Some(NetworkListener::new(tx));
+
+        info!("Binding services in service detector...");
 
         let _ = self.listener.as_mut().unwrap().bind_services(self.config.services.as_slice()).map_err(|e| {
             error!("Calling bind_services() from Controller not working, returned with error: {:?}", e);
             e
         });
 
-        let ip_addr =
-            Ipv4Addr::from_str(self.config.bind_address.as_str()).map_err(|e| e.to_string());
+        info!("Services bound correctly in service detector");
 
-        // Should be ok to take ownership here as the self.listener shouldn't be used after this spawn
-        let mut listener = self.listener.take().unwrap();
+        let ip_addr = Ipv4Addr::from_str(self.config.bind_address.as_str())
+            .map_err(|e| e.to_string())
+            .unwrap();
 
-        tokio::spawn(async move {
-            if let Err(e) = listener.start_listening(ip_addr.unwrap()).await {
+        let copy = self.listener.as_mut().unwrap().extract_for_listening();
+
+        let handle = tokio::spawn(async move {
+            if let Err(e) = NetworkListener::start_listening(copy, ip_addr).await {
                 error!("NetworkListener failed: {:?}", e);
             }
         });
 
-        while let Some(session_request) = self.session_rx.as_mut().unwrap().recv().await {
-            debug!(
-                "Session request received from {}:",
-                session_request.client_addr
-            );
-            debug!("Service detected as: {:?}", session_request.service_name);
+        self.listener_handle = Some(handle);
+
+        loop {
+            tokio::select! {
+                session_request = self.session_rx.as_mut().unwrap().recv() => {
+                    match session_request {
+                        Some(request) => {
+                            info!("Session request received from {}", request.client_addr);
+                            info!("Service detected as: {:?}", request.service_name);
+                        }
+                        None => {
+                            info!("Session channel closed, stopping controller");
+                            break;
+                        }
+                    }
+                }
+
+                _ = shutdown_rx.recv() => {
+                        info!("Shutdown signal received in controller, stopping gracefully");
+                        break;
+                    }
+            }
         }
+
+        info!("Controller initiating graceful shutdown...");
+        self.shutdown().await?;
+        Ok(())
+    }
+
+    pub async fn shutdown(&mut self) -> Result<(), ControllerError> {
+        info!("Starting Controller shutdown...");
+
+        if let Some(listener) = &mut self.listener {
+            if let Err(e) = listener.shutdown().await {
+                error!("Failed to shutdown NetworkListener gracefully: {:?}", e);
+            }
+        }
+
+        if let Some(handle) = self.listener_handle.take() {
+            info!("Aborting network listener task...");
+            handle.abort();
+
+            match handle.await {
+                Ok(()) => info!("Network listener task terminated cleanly"),
+                Err(e) if e.is_cancelled() => info!("Network listener task was cancelled"),
+                Err(e) => error!("Network listener task terminated with error: {:?}", e),
+            }
+        }
+
+        if let Some(session_rx) = self.session_rx.take() {
+            drop(session_rx);
+            info!("Session receiver channel closed");
+        }
+
+        self.listener = None;
+
+        info!("Controller shutdown completed");
         Ok(())
     }
 }
@@ -62,6 +120,7 @@ mod tests {
     use super::*;
     use crate::configuration::config::Config;
     use crate::configuration::types::{Protocol, ServiceConfig};
+    use log::debug;
     use std::time::Duration;
     use tokio::io::AsyncReadExt;
     use tokio::net::TcpStream;
@@ -166,9 +225,10 @@ mod tests {
         debug!("Controller initialized");
 
         debug!("Starting controller...");
+        let (tx, rx) = tokio::sync::broadcast::channel(1);
         let controller_task = tokio::spawn(async move {
             debug!("Controller.run() is starting...");
-            let _ = controller.run().await;
+            let _ = controller.run(rx).await;
             debug!("Controller.run() has ended");
         });
 
@@ -205,9 +265,9 @@ mod tests {
         debug!("Controller is still running and processing sessions");
 
         debug!("Cleaning up controller task...");
-        controller_task.abort();
-        let _ = controller_task.await;
+        let _ = tx.send(());
 
+        let _ = controller_task.await;
         debug!("=== Complete Controller Flow Test Finished ===");
     }
 }
