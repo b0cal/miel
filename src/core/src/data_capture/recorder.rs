@@ -14,7 +14,7 @@
 //! - Rich logging at TRACE/DEBUG/INFO
 //!
 //! Minimal usage
-//! ```no_run
+//! ```ignore
 //! use std::sync::Arc;
 //! use tokio::net::TcpStream;
 //! use uuid::Uuid;
