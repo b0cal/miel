@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { 
-  RefreshCw,
   Download,
 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
@@ -95,11 +94,6 @@ const Dashboard = () => {
     return () => clearInterval(interval)
   }, [])
 
-  const handleRefresh = () => {
-    fetchDashboardData()
-    fetchNetworkActivity()
-    fetchTopThreats()
-  }
 
   const handleExport = () => {
     console.log('Exporting data...')
@@ -342,14 +336,13 @@ for Enhanced Learning`}
             <div className="space-y-2">
               {[
                 { name: 'Export', icon: Download },
-                { name: 'Refresh', icon: RefreshCw },
               ].map((item, index) => {
                 const Icon = item.icon
                 return (
                   <button
                     key={index}
                     className="w-full dashboard-card p-2 flex items-center space-x-2 hover:bg-gray-800"
-                    onClick={item.name === 'Export' ? handleExport : item.name === 'Refresh' ? handleRefresh : undefined}
+                    onClick={item.name === 'Export' ? handleExport : undefined}
                   >
                     <Icon className="h-4 w-4" />
                     <span>{item.name}</span>
