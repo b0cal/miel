@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react'
 import { 
-  Activity, 
-  Database, 
-  AlertTriangle,
   RefreshCw,
   Download,
-  Settings,
 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import apiService from '../services/apiService.js'
@@ -36,7 +32,7 @@ const Dashboard = () => {
   const fetchNetworkActivity = async () => {
     try {
       // Future: Replace with actual API call
-      const data = await apiService.getNetworkActivity()
+      const data = await apiService.getByteTransferTimeline()
       setNetworkData(data)
     } catch (error) {
       console.error('Error fetching network data:', error)
@@ -46,10 +42,10 @@ const Dashboard = () => {
   // Uncomment to use the fetchTopThreats
   // const topThreats = fetchTopThreats
   const [topThreats, setTopThreats] = useState([
-    { ip: '203.0.113.45', detections: 23, country: 'Unknown' },
-    { ip: '198.51.100.78', detections: 18, country: 'CN' },
-    { ip: '192.0.2.123', detections: 15, country: 'RU' },
-    { ip: '10.0.0.89', detections: 12, country: 'Local' },
+    { ip: '203.0.113.45', detections: 23 },
+    { ip: '198.51.100.78', detections: 18 },
+    { ip: '192.0.2.123', detections: 15 },
+    { ip: '10.0.0.89', detections: 12 },
   ])
 
   const fetchTopThreats = async () => {
@@ -62,33 +58,27 @@ const Dashboard = () => {
     }
   }
 
-  const [isLoading, setIsLoading] = useState(false)
 
   // Mock API service functions (replace with actual API calls)
   const fetchDashboardData = async () => {
-    setIsLoading(true)
     try {
-      // Future: Replace with actual API call
-      // const data = await apiService.getDashboardStats()
-      // setDashboardData(data)
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      const avgPacketPerHour = await apiService.getAvgPacketPerHour()
+      const activeConnections = await apiService.getNumberOfActiveSessions()
+      const _mostAttackedService = await apiService.getMostAttackedService()
       
       // Mock data update
       setDashboardData(prev => ({
         ...prev,
-        packetsPerHour: Math.floor(Math.random() * 1000) + 4000,
+        packetsPerHour: avgPacketPerHour,
         cpuUsage: Math.floor(Math.random() * 40) + 40,
         memoryUsage: Math.floor(Math.random() * 30) + 35,
         databaseStorage: Math.floor(Math.random() * 20) + 70,
-        activeConnections: Math.floor(Math.random() * 100) + 200,
+        activeConnections,
+        /*mostAttackedService,*/
       }))
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
-    } finally {
-      setIsLoading(false)
-    }
+    }   
   }
 
   useEffect(() => {
@@ -180,14 +170,14 @@ const Dashboard = () => {
           {/* ASCII Art Container - Flex-grow to take remaining space */}
           <div className="flex-grow bg-gray-600 text-white p-4 rounded-lg overflow-hidden min-w-0">
             <div className="flex items-center justify-center h-full">
-              <div className="w-full flex justify-center">
+              <div className="w-full flex justify-left">
                 {/* Single line ASCII art for larger screens */}
                 <div className="font-mono text-white leading-none overflow-hidden hidden xl:block">
-                  <pre className="whitespace-pre text-[0.6rem] lg:text-[0.7rem] xl:text-xs">
+                  <pre className="whitespace-pre text-[0.6rem] lg:text-[0.7rem] xl:text-[0.8rem]">
                     {`██████╗  ██████╗  ██████╗ █████╗ ██╗         ██╗███╗   ███╗██╗███████╗██╗     
-██╔═══██╗██╔═██████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
+██╔══██╗██╔═████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
 ██████╔╝██║██╔██║██║     ███████║██║       ██╔╝ ██╔████╔██║██║█████╗  ██║     
-██╔═══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+██╔══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
 ██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
 ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝`}
                   </pre>
@@ -197,9 +187,9 @@ const Dashboard = () => {
                 <div className="font-mono text-white leading-none overflow-hidden hidden lg:block xl:hidden">
                   <pre className="whitespace-pre text-[0.45rem]">
                     {`██████╗  ██████╗  ██████╗ █████╗ ██╗         ██╗███╗   ███╗██╗███████╗██╗     
-██╔═══██╗██╔═██████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
+██╔══██╗██╔═████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
 ██████╔╝██║██╔██║██║     ███████║██║       ██╔╝ ██╔████╔██║██║█████╗  ██║     
-██╔═══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+██╔══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
 ██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
 ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝`}
                   </pre>
@@ -208,19 +198,21 @@ const Dashboard = () => {
                 {/* Medium screens */}
                 <div className="font-mono text-white leading-none overflow-hidden hidden md:block lg:hidden">
                   <pre className="whitespace-pre text-[0.35rem]">
-                    {`██████╗  ██████╗  ██████╗ █████╗ ██╗         
-██╔═══██╗██╔═██████╗██╔════╝██╔══██╗██║         
-██████╔╝██║██╔██║██║     ███████║██║         
-██╔═══██╗████╔╝██║██║     ██╔══██║██║         
-██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗    
-╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝    
-                                             
-██╗███╗   ███╗██╗███████╗██╗     
-██╔╝████╗ ████║██║██╔════╝██║     
-██╔╝ ██╔████╔██║██║█████╗  ██║     
-██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
-██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
-╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝`}
+                    {`
+██████╗  ██████╗  ██████╗ █████╗ ██╗             
+██╔══██╗██╔═████╗██╔════╝██╔══██╗██║             
+██████╔╝██║██╔██║██║     ███████║██║             
+██╔══██╗████╔╝██║██║     ██╔══██║██║             
+██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗        
+╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝        
+                                                 
+                ██╗███╗   ███╗██╗███████╗██╗     
+               ██╔╝████╗ ████║██║██╔════╝██║     
+              ██╔╝ ██╔████╔██║██║█████╗  ██║     
+             ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+            ██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
+            ╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝
+`}
                   </pre>
                 </div>
 
@@ -231,32 +223,6 @@ const Dashboard = () => {
 for Enhanced Learning`}
                   </pre>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Buttons Container - Fixed width */}
-          <div className="w-48 sm:w-52 md:w-56 lg:w-60 xl:w-64 flex-shrink-0 bg-gray-600 text-white p-4 rounded-lg">
-            <div className="flex items-center justify-center h-full">
-              <div className="flex flex-row space-x-2">
-                <button 
-                  onClick={handleRefresh}
-                  className="dashboard-button flex items-center justify-center space-x-1 text-sm px-3 py-2"
-                  disabled={isLoading}
-                >
-                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                  <span className="hidden lg:inline">Refresh</span>
-                </button>
-                <button 
-                  onClick={handleExport}
-                  className="dashboard-button flex items-center justify-center space-x-1 text-sm px-3 py-2"
-                >
-                  <Download className="h-4 w-4" />
-                  <span className="hidden lg:inline">Export</span>
-                </button>
-                <button className="dashboard-button flex items-center justify-center px-3 py-2">
-                  <Settings className="h-4 w-4" />
-                </button>
               </div>
             </div>
           </div>
@@ -295,7 +261,7 @@ for Enhanced Learning`}
           <div className="col-span-12 md:col-span-6 space-y-4">
             {/* CPU Usage Chart */}
             <div className="dashboard-card p-4">
-              <h3 className="text-lg font-semibold mb-4">CPU usage</h3>
+              <h3 className="text-lg font-semibold mb-4">Network Activity</h3>
               <div className="h-48">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={networkData}>
@@ -321,7 +287,7 @@ for Enhanced Learning`}
 
             {/* Multi-purpose Dashboard */}
             <div className="dashboard-card p-4">
-              <h3 className="text-lg font-semibold mb-4">Multi purpose dashboard</h3>
+              <h3 className="text-lg font-semibold mb-4">Possible detected threats</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={networkData}>
@@ -344,7 +310,7 @@ for Enhanced Learning`}
             {/* System Indicators */}
             <div className="grid grid-cols-3 gap-2">
               <div className="metric-card">
-                <div className="text-white text-xs mb-1">Memory</div>
+                <div className="text-white text-xs xs:text-[0.2rem] mb-1">Memory</div>
                 <div className="text-orange-400 text-sm font-bold">
                   {dashboardData.memoryUsage}%
                 </div>
@@ -365,11 +331,10 @@ for Enhanced Learning`}
             <div className="dashboard-card p-4">
               <h4 className="font-semibold mb-2">Most attacked service</h4>
               <div className="text-2xl text-orange-400 font-bold mb-1">
-                {dashboardData.mostAttackedService}
+                {dashboardData.mostAttackedService.service || 'HTTP'}
               </div>
-              <div className="text-sm text-gray-400">Port 80/443</div>
               <div className="mt-2 text-xs text-gray-500">
-                {Math.floor(Math.random() * 100) + 50} attacks today
+                {dashboardData.mostAttackedService.count || '0'} attacks today
               </div>
             </div>
 
@@ -378,10 +343,6 @@ for Enhanced Learning`}
               {[
                 { name: 'Export', icon: Download },
                 { name: 'Refresh', icon: RefreshCw },
-                { name: 'Settings', icon: Settings },
-                { name: 'Alerts', icon: AlertTriangle },
-                { name: 'Reports', icon: Database },
-                { name: 'Activity', icon: Activity },
               ].map((item, index) => {
                 const Icon = item.icon
                 return (
@@ -408,9 +369,6 @@ for Enhanced Learning`}
             </div>
             <div className="text-sm">
               Active Sessions: {dashboardData.activeConnections}
-            </div>
-            <div className="text-sm">
-              CPU: {dashboardData.cpuUsage}%
             </div>
           </div>
           <div className="text-sm">

@@ -156,10 +156,26 @@ class ApiService {
 
     return totalBytesTransfered / 24
   }
-  // Dashboard endpoints
-  async getDashboardStats() {
-    return this.request('/dashboard/stats')
+
+  async getMostAttackedService() {
+    const sessions = await this.request('/api/sessions')
+
+    const serviceNames = sessions.map(session =>  session.service_name)
+
+    const serviceCounts = serviceNames.reduce((counts, service) => {
+      counts[service] = (counts[service] || 0) + 1
+      return counts
+    }, {})
+
+    const mostAttackedService = Object.entries(serviceCounts)
+      .reduce((max, [service, count]) => 
+        count > max.count ? { service, count } : max
+      , { service: null, count: 0 })
+
+    return mostAttackedService
   }
+
+  // Dashboard endpoints
 
   async getNetworkActivity(timeRange = '24h') {
     return this.request(`/network/activity?range=${timeRange}`)
@@ -253,6 +269,7 @@ class ApiService {
     }
     return response.blob()
   }
+
 
   // Configuration endpoints
   async getConfiguration() {

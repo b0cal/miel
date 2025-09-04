@@ -23,7 +23,7 @@ export default {
       },
       fontFamily: {
         'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        'mono': ['JetBrains Mono', 'Consolas', 'Monaco', 'monospace'],
+        'mono': ['Fira Code Variable'],
       },
       animation: {
         'pulse-orange': 'pulse-orange 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
