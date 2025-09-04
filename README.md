@@ -100,6 +100,10 @@ sudo miel <PATH_TO_CONFIG>
 
 ## Known issues
 
+- If the web application crashes it panics and stops the application
+- If the app is stopped and restarted too fast the binding ports could be unavailable for a bit.
+  - **Workaround**: Just wait for the timeout for the port to be available again (approx. 1 min)
+
 ## Further improvements
 
 - Support [oci](opencontainers.org) container images
