@@ -23,11 +23,17 @@ pub struct ArtifactResponse {
 
 /// GET /
 pub fn dashboard_route() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    warp::path::end().and(warp::get()).and_then(|| async move {
-        let html = r#"<html><head><title>Miel Dashboard</title></head>
-                <body><h1>Miel is running</h1><p>See /sessions for JSON.</p></body></html>"#;
-        Ok::<_, Rejection>(reply::html(html))
-    })
+    let webui_path = "../../../webui/";
+
+    // Redirect / to /index.html
+    let redirect_root = warp::path::end()
+        .and(warp::get())
+        .map(|| warp::redirect::temporary(warp::http::Uri::from_static("/index.html")));
+
+    // Serve all static files from webui/
+    let static_files = warp::fs::dir(webui_path);
+
+    redirect_root.or(static_files)
 }
 
 /// GET /sessions
