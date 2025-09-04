@@ -15,10 +15,13 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    // Example how to log
-    // https://docs.rs/env_logger/latest/env_logger/
+    // Configure logging with specific levels the different modules
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
+        .filter_module("sea_orm", log::LevelFilter::Warn)  // Reduce ORM logging
+        .filter_module("sqlx", log::LevelFilter::Warn)     // Reduce SQLx logging
+        .filter_module("sea_orm::query", log::LevelFilter::Error) // Suppress query logs
+        .filter_module("sqlx::query", log::LevelFilter::Error)    // Suppress SQLx query logs
         .format_target(false)
         .init();
 
@@ -55,6 +58,7 @@ async fn main() {
 
     info!("== Controller configuration ==");
     let mut controller = Controller::new(config.unwrap())
+        .await
         .map_err(|e| {
             error!(
                 "Unable to create a controller instance: {:?}, exiting...",
