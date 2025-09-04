@@ -1,10 +1,11 @@
 use super::types;
+use crate::storage::types::SessionFilter;
 use std::sync::Arc;
 use uuid::Uuid;
 use warp::{http::StatusCode, reply, Filter, Rejection, Reply};
 
 use super::ApiError;
-use crate::{storage::storage_trait::Storage, web_interface::types::SessionResponse};
+use crate::storage::storage_trait::Storage;
 
 /// GET /
 pub fn dashboard_route() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -28,30 +29,20 @@ pub fn list_sessions_route(
     warp::path("sessions")
         .and(warp::path::end())
         .and(warp::get())
-        .and_then(move || {
+        .and(warp::query::<SessionFilter>())
+        .and_then(move |filter: SessionFilter| {
             let storage = storage.clone();
             async move {
-                match storage.get_sessions(None) {
+                match storage.get_sessions(Some(filter)) {
                     Ok(list) => {
-                        let response: Vec<SessionResponse> = list
-                            .into_iter()
-                            .map(|mut s| SessionResponse {
-                                id: s.id,
-                                service_name: s.service_name,
-                                client_addr: s.client_addr.to_string(),
-                                bytes_transfered: s.bytes_transferred,
-                                start_time: s.start_time.to_rfc3339(),
-                                end_time: s.end_time.take().map(|dt| dt.to_rfc3339()),
-                                status: s.status,
-                            })
-                            .collect();
-                        Ok::<_, Rejection>(reply::with_status(
-                            reply::json(&response),
+                        // Directly return storage sessions
+                        Ok::<_, Rejection>(warp::reply::with_status(
+                            warp::reply::json(&list),
                             StatusCode::OK,
                         ))
                     }
-                    Err(_) => Ok::<_, Rejection>(reply::with_status(
-                        reply::json(&ApiError {
+                    Err(_) => Ok::<_, Rejection>(warp::reply::with_status(
+                        warp::reply::json(&ApiError {
                             message: "Failed to load sessions".to_string(),
                         }),
                         StatusCode::INTERNAL_SERVER_ERROR,
