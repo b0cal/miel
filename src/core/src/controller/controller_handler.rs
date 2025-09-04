@@ -1,10 +1,11 @@
 use crate::configuration::config::Config;
-use crate::configuration::ServiceConfig;
+use crate::configuration::{ServiceConfig, StorageBackend};
 use crate::container_management::ContainerManager;
 use crate::error_handling::types::{ControllerError, SessionError};
 use crate::network::{network_listener::NetworkListener, types::SessionRequest};
 use crate::session_manager::SessionManager;
 use crate::storage::database_storage::DatabaseStorage;
+use crate::storage::file_storage::FileStorage;
 use crate::storage::storage_trait::Storage;
 use log::{error, info};
 use std::net::Ipv4Addr;
@@ -27,8 +28,26 @@ pub struct Controller {
 impl Controller {
     pub async fn new(config: Config) -> Result<Self, ControllerError> {
         let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new().unwrap()));
-        let storage: Arc<dyn Storage + Send + Sync> =
-            Arc::new(DatabaseStorage::new().await.unwrap());
+
+        // Create storage backend based on configuration
+        let storage: Arc<dyn Storage + Send + Sync> = match config.storage_backend {
+            StorageBackend::Database => {
+                info!("Initializing Database storage backend");
+                Arc::new(
+                    DatabaseStorage::from_config_path(&config.storage_path)
+                        .await
+                        .map_err(ControllerError::Storage)?,
+                )
+            }
+            StorageBackend::FileSystem => {
+                info!("Initializing FileSystem storage backend");
+                Arc::new(
+                    FileStorage::from_config_path(&config.storage_path)
+                        .map_err(ControllerError::Storage)?,
+                )
+            }
+        };
+
         let session_manager = SessionManager::new(
             container_manager.clone(),
             storage.clone(),

@@ -1,9 +1,9 @@
 //! Filesystem-backed storage implementation.
 //!
 //! This backend persists sessions as human-readable text files, interactions as
-//! binary blobs, and artifacts in a per-session directory tree. It’s intended
+//! binary blobs, and artifacts in a per-session directory tree. It's intended
 //! for easy inspection and simple deployments. The root directory can be
-//! provided via `MIEL_FILE_STORAGE_DIR` or specified explicitly.
+//! provided via `MIEL_STORAGE_PATH` or specified explicitly.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -91,18 +91,41 @@ impl FileStorage {
         })
     }
 
-    /// Create a `FileStorage` using `MIEL_FILE_STORAGE_DIR` if set, otherwise the current directory.
+    /// Create a `FileStorage` using the configured storage path.
+    /// This method should be used when creating storage from application configuration.
+    pub fn from_config_path<P: AsRef<Path>>(storage_path: P) -> Result<Self, StorageError> {
+        let base_path = storage_path.as_ref().join("file_storage");
+        info!(
+            "Using FileStorage from configured storage path: {}",
+            base_path.display()
+        );
+        Self::new(base_path)
+    }
+
+    /// Create a `FileStorage` using `MIEL_STORAGE_PATH` if set, otherwise the current directory.
+    ///
+    /// This method respects the `MIEL_STORAGE_PATH` environment variable for both configuration
+    /// and environment-based deployments. File storage will be created in a 'file_storage'
+    /// subdirectory within the specified path.
     pub fn new_default() -> Result<Self, StorageError> {
-        if let Ok(dir) = std::env::var("MIEL_FILE_STORAGE_DIR") {
-            info!("Using FileStorage from environment-defined directory");
-            return Self::new(PathBuf::from(dir));
+        if let Ok(storage_dir) = std::env::var("MIEL_STORAGE_PATH") {
+            let base_path = std::path::PathBuf::from(storage_dir).join("file_storage");
+            info!(
+                "Using FileStorage from MIEL_STORAGE_PATH environment variable: {}",
+                base_path.display()
+            );
+            return Self::new(base_path);
         }
         let cwd = std::env::current_dir().map_err(|e| {
             error!("Failed to get current dir: {}", e);
             StorageError::ReadFailed
         })?;
-        info!("Using FileStorage at current directory");
-        Self::new(cwd)
+        let base_path = cwd.join("file_storage");
+        info!(
+            "Using FileStorage at current directory: {}",
+            base_path.display()
+        );
+        Self::new(base_path)
     }
 
     fn sessions_dir(&self) -> PathBuf {

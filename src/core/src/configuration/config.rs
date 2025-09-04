@@ -21,6 +21,7 @@ use std::{env, fs};
 /// - `services`: a list of `ServiceConfig` used further by the *Container Manager* to configure the services
 /// - `bind_address`: For server binding
 /// - `storage_path`: Path locating where the data should be persistently stored
+/// - `storage_backend`: Choice between filesystem or database storage backend
 /// - `web_ui_enabled`: If `true`, will start the web UI service
 /// - `web_ui_port`: Port on which to expose the web UI service
 /// - `max_sessions`: Limiting the number of concurrent sessions to avoid DDOS and overload in general
@@ -59,6 +60,17 @@ pub struct Config {
     /// Use `--storage-path <PATH>` to set this value from the CLI
     #[arg(long)]
     pub storage_path: PathBuf,
+
+    /// Storage backend to use for persisting data.
+    ///
+    /// Specifies whether to use filesystem-based storage or database-based storage.
+    /// - `filesystem`: Stores data as files in the filesystem
+    /// - `database`: Stores data in a SQLite database
+    ///
+    /// # Command Line
+    /// Use `--storage-backend <BACKEND>` to set this value from the CLI
+    #[arg(long, value_enum)]
+    pub storage_backend: StorageBackend,
 
     /// Enable or disable the web user interface
     ///
@@ -351,6 +363,7 @@ impl Default for Config {
             ],
             bind_address: "0.0.0.0".to_string(),
             storage_path: PathBuf::from("/var/lib/miel"),
+            storage_backend: StorageBackend::Database,
             web_ui_enabled: false,
             web_ui_port: 3000,
             max_sessions: 100,
@@ -416,6 +429,7 @@ impl Config {
             services: vec![service],
             bind_address: "192.168.1.1".to_string(),
             storage_path: PathBuf::from("/etc"),
+            storage_backend: StorageBackend::Database,
             web_ui_port: 8080,
             web_ui_enabled: true,
             max_sessions: 100,
@@ -740,6 +754,8 @@ mod tests_from_file {
             protocol = "UDP"
             container_image = "dns-container"
             enabled = true
+            header_patterns = []
+            banner_response = "DNS Server v1.0"
         "#;
         write_toml_file(&services_dir.join("dns.toml"), service1);
 
@@ -750,6 +766,7 @@ mod tests_from_file {
             protocol = "TCP"
             container_image = "ftp-container"
             enabled = false
+            header_patterns = ["USER", "PASS"]
         "#;
         write_toml_file(&services_dir.join("ftp.toml"), service2);
 
