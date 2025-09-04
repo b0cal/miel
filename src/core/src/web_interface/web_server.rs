@@ -3,12 +3,9 @@ use std::sync::Arc;
 
 use super::routes::*;
 use crate::error_handling::types::WebError;
-use crate::session_management::session_manager::SessionManager;
 use crate::storage::storage_trait::Storage;
-use crate::storage::types::{CaptureArtifacts, Session};
-use uuid::Uuid;
 
-use warp::{http::StatusCode, reply, Filter, Rejection, Reply};
+use warp::Filter;
 
 /// API error payload
 #[derive(serde::Serialize)]
@@ -19,16 +16,12 @@ pub struct ApiError {
 /// Web server for HTTP API and dashboard
 pub struct WebServer {
     storage: Arc<dyn Storage + Send + Sync>,
-    session_manager: Arc<SessionManager>,
 }
 
 impl WebServer {
     /// Create a new WebServer instance
-    pub fn new(storage: Arc<dyn Storage>, session_manager: Arc<SessionManager>) -> Self {
-        Self {
-            storage,
-            session_manager,
-        }
+    pub fn new(storage: Arc<dyn Storage>) -> Self {
+        Self { storage }
     }
 
     /// Start the web server on the given port
@@ -49,46 +42,5 @@ impl WebServer {
         warp::serve(routes).run(addr).await;
 
         Ok(())
-    }
-
-    // The following helpers match the UML names and can be expanded later if needed
-    #[allow(dead_code)]
-    async fn get_dashboard() -> impl Reply {
-        reply::html("<h1>Miel</h1>")
-    }
-
-    #[allow(dead_code)]
-    async fn get_sessions(&self) -> impl Reply {
-        let list: Vec<Session> = self.storage.get_sessions(None).unwrap_or_default();
-        reply::json(&list)
-    }
-
-    #[allow(dead_code)]
-    async fn get_session_data(&self, id: Uuid) -> impl Reply {
-        match self.storage.get_session_data(id) {
-            Ok(bytes) => reply::with_header(bytes, "Content-Type", "application/octet-stream")
-                .into_response(),
-            Err(_) => reply::with_status(
-                reply::json(&ApiError {
-                    message: "Not found".into(),
-                }),
-                StatusCode::NOT_FOUND,
-            )
-            .into_response(),
-        }
-    }
-
-    #[allow(dead_code)]
-    async fn download_capture_artifacts(&self, id: Uuid) -> impl Reply {
-        match self.storage.get_capture_artifacts(id) {
-            Ok(art) => reply::json(&art).into_response(),
-            Err(_) => reply::with_status(
-                reply::json(&ApiError {
-                    message: "Not found".into(),
-                }),
-                StatusCode::NOT_FOUND,
-            )
-            .into_response(),
-        }
     }
 }

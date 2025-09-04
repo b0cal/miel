@@ -1,4 +1,3 @@
-use super::types;
 use crate::storage::types::SessionFilter;
 use std::sync::Arc;
 use uuid::Uuid;
