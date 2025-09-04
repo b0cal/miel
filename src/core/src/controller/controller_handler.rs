@@ -277,11 +277,7 @@ impl Controller {
 
         // Use file storage for tests to avoid database complexity
         let storage: Arc<dyn Storage + Send + Sync> =
-<<<<<<< HEAD
-            Arc::new(FileStorage::new(temp_path).map_err(ControllerError::Storage)?);
-=======
             Arc::new(FileStorage::new(temp_path).map_err(|e| ControllerError::StorageError(e))?);
->>>>>>> dev
 
         // Create a mock container manager that doesn't require root privileges
         let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new_mock()));

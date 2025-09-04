@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::{error, info};
+use log::{error, info, warn};
 use miel::configuration::config::Config;
 use miel::controller::controller_handler::Controller;
 use std::path::Path;
@@ -15,9 +15,9 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    // Configure logging with specific levels the different modules
+    // Configure logging with specific levels for different modules
+    // Respect RUST_LOG environment variable for overall level
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
         .filter_module("sea_orm", log::LevelFilter::Warn) // Reduce ORM logging
         .filter_module("sqlx", log::LevelFilter::Warn) // Reduce SQLx logging
         .filter_module("sea_orm::query", log::LevelFilter::Error) // Suppress query logs
@@ -39,31 +39,30 @@ async fn main() {
 "
     );
 
-    info!("== Configuration import ==");
+    info!("Miel honeypot starting up");
 
     // Get command-line arguments
     let args = Args::parse();
 
     if args.config_file.is_empty() {
-        error!("No configuration file found, exiting...");
+        error!("No configuration file specified");
         std::process::exit(1);
     }
 
     let config = Config::from_file(Path::new(args.config_file.as_str())).map_err(|e| {
-        error!("Unable to import configuration from file: {:?}, exiting", e);
+        error!(
+            "Failed to load configuration from {}: {:?}",
+            args.config_file, e
+        );
         std::process::exit(1);
     });
 
-    info!("Configuration imported successfully");
+    info!("Configuration loaded from {}", args.config_file);
 
-    info!("== Controller configuration ==");
     let mut controller = Controller::new(config.unwrap())
         .await
         .map_err(|e| {
-            error!(
-                "Unable to create a controller instance: {:?}, exiting...",
-                e
-            );
+            error!("Failed to initialize controller: {:?}", e);
             std::process::exit(1);
         })
         .unwrap();
@@ -72,22 +71,20 @@ async fn main() {
 
     let controller_handle = tokio::spawn(async move {
         if let Err(e) = controller.run(shutdown_rx).await {
-            error!("Error occurred in the controller process: {:?}", e);
+            error!("Controller error: {:?}", e);
         }
     });
 
-    info!("Controller operational!");
+    info!("Miel honeypot is now operational");
 
     match signal::ctrl_c().await {
         Ok(()) => {
-            info!("Received Ctrl+C signal, initiating graceful shutdown...");
+            info!("Shutdown signal received, stopping honeypot...");
         }
         Err(e) => {
-            error!("Unable to listen for shutdown signal: {}", e);
+            error!("Failed to listen for shutdown signal: {}", e);
         }
     }
-
-    info!("Shutdown signal received, signaling controller to stop...");
 
     if let Err(e) = shutdown_tx.send(()) {
         error!("Failed to send shutdown signal: {:?}", e);
@@ -95,23 +92,13 @@ async fn main() {
 
     match tokio::time::timeout(tokio::time::Duration::from_secs(10), controller_handle).await {
         Ok(Ok(())) => {
-            info!("Controller stopped and shut down gracefully");
+            info!("Miel honeypot shutdown completed");
         }
         Ok(Err(e)) => {
-            error!("Controller task panicked: {:?}", e);
+            error!("Controller task failed during shutdown: {:?}", e);
         }
         Err(_) => {
-            error!("Controller shutdown timed out, forcing termination...");
+            warn!("Controller shutdown timed out after 10 seconds");
         }
-    }
-
-    info!("Application shutdown complete");
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
     }
 }

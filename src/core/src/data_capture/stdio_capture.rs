@@ -23,7 +23,7 @@ pub struct StdioCapture {
 
 impl StdioCapture {
     pub fn new(session_id: Uuid) -> Self {
-        debug!("[{}] StdioCapture created", session_id);
+        debug!("Stdio capture created for session {}", session_id);
         Self {
             session_id,
             stdin_data: Mutex::new(Vec::new()),
@@ -34,11 +34,11 @@ impl StdioCapture {
     }
 
     pub fn capture_pty(&self, mut pty_master: std::fs::File) -> Result<(), CaptureError> {
-        debug!("[{}] StdioCapture snapshot start", self.session_id);
+        debug!("Starting PTY capture for session {}", self.session_id);
         let mut buf = [0u8; 4096];
         match pty_master.read(&mut buf) {
             Ok(0) => {
-                trace!("[{}] PTY read returned EOF", self.session_id);
+                trace!("PTY read returned EOF for session {}", self.session_id);
             }
             Ok(n) => {
                 self.stdout_data
@@ -49,21 +49,18 @@ impl StdioCapture {
                     .lock()
                     .unwrap()
                     .push((Utc::now(), StdioStream::Stdout, n));
-                let preview = &buf[..std::cmp::min(n, 64)];
+
+                trace!("PTY capture: {} bytes from session {}", n, self.session_id);
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 trace!(
-                    "[{}] captured STDOUT {} bytes: {}{}",
-                    self.session_id,
-                    n,
-                    String::from_utf8_lossy(preview),
-                    if n > 64 { " ..." } else { "" }
+                    "PTY not ready for session {} (would block)",
+                    self.session_id
                 );
             }
             Err(e) => {
-                if e.kind() != io::ErrorKind::WouldBlock {
-                    return Err(CaptureError::StdioError(e));
-                } else {
-                    trace!("[{}] PTY WouldBlock on snapshot", self.session_id);
-                }
+                warn!("PTY read error for session {}: {}", self.session_id, e);
+                return Err(CaptureError::StdioError(e));
             }
         }
         Ok(())

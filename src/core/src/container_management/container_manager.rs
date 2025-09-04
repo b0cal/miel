@@ -36,18 +36,18 @@ impl ContainerManager {
     ///
     /// Returns an error if the configured runtime is not available on the host.
     pub fn new() -> Result<Self, ContainerError> {
-        info!("Initializing ContainerManager");
+        debug!("Initializing container manager");
 
         // Check if systemd-nspawn is available, otherwise fail
         if !Self::is_runtime_available() {
-            error!("systemd-nspawn runtime is not available on this system");
+            error!("Container runtime systemd-nspawn is not available");
             return Err(ContainerError::RuntimeNotAvailable);
         }
 
         // Require root privileges: unprivileged nspawn with a plain directory tree is not supported
         // on many systems and will implicitly enable private networking, breaking host-port binding.
         if !Self::is_running_as_root() {
-            error!("Insufficient privileges: systemd-nspawn requires root access");
+            error!("Insufficient privileges: container manager requires root access");
             return Err(ContainerError::StartFailed(
                 "systemd-nspawn requires root privileges for this setup. Please run the program with sudo.".to_string(),
             ));
@@ -64,7 +64,7 @@ impl ContainerManager {
         };
 
         info!(
-            "ContainerManager initialized successfully with runtime: {:?}",
+            "Container manager initialized with runtime: {:?}",
             manager.runtime
         );
         Ok(manager)
@@ -103,7 +103,7 @@ impl ContainerManager {
             false
         };
 
-        debug!("Root privilege check result: {}", is_root);
+        debug!("Root privilege check: {}", is_root);
         is_root
     }
 
@@ -121,7 +121,7 @@ impl ContainerManager {
     ) -> Result<ContainerHandle, ContainerError> {
         let container_id = format!("miel-{}-{}", service_config.name, Uuid::new_v4());
 
-        info!(
+        debug!(
             "Creating container {} for service {}",
             container_id, service_config.name
         );
@@ -129,7 +129,7 @@ impl ContainerManager {
         // Use the runtime to create the container
         let handle = match self.runtime {
             Runtime::SystemdNspawn => {
-                debug!("Using SystemdNspawn runtime for container creation");
+                debug!("Using systemd-nspawn runtime for container creation");
                 self.create_nspawn_container(service_config, &container_id)
                     .await?
             }
@@ -144,8 +144,8 @@ impl ContainerManager {
             .insert(container_id.clone(), handle.clone());
 
         info!(
-            "Successfully created and registered container: {}",
-            container_id
+            "Container {} created for service {}",
+            container_id, service_config.name
         );
         Ok(handle)
     }
@@ -158,21 +158,18 @@ impl ContainerManager {
         &mut self,
         mut handle: ContainerHandle,
     ) -> Result<(), ContainerError> {
-        info!("Starting cleanup for container: {}", handle.id);
+        debug!("Cleaning up container: {}", handle.id);
 
         // Kill the process if it's still running
         if let Some(mut process) = handle.process_handle.take() {
             debug!("Terminating process for container: {}", handle.id);
             if let Err(e) = process.kill().await {
-                warn!("Failed to kill container process {}: {}", handle.id, e);
+                warn!("Failed to terminate container process {}: {}", handle.id, e);
             } else {
-                debug!(
-                    "Successfully terminated process for container: {}",
-                    handle.id
-                );
+                debug!("Process terminated for container: {}", handle.id);
             }
         } else {
-            debug!("No process handle found for container: {}", handle.id);
+            debug!("No active process found for container: {}", handle.id);
         }
 
         // Remove from active containers
@@ -181,27 +178,26 @@ impl ContainerManager {
 
         // Clean up container directory
         let container_path = format!("/tmp/miel-containers/{}", handle.id);
-        debug!("Cleaning up container directory: {}", container_path);
+        debug!("Removing container directory: {}", container_path);
         if let Err(e) = std::fs::remove_dir_all(&container_path) {
             warn!(
-                "Failed to clean up container directory {}: {}",
+                "Failed to remove container directory {}: {}",
                 container_path, e
             );
         } else {
-            debug!(
-                "Successfully cleaned up container directory: {}",
-                container_path
-            );
+            debug!("Container directory removed: {}", container_path);
         }
 
-        info!("Completed cleanup for container: {}", handle.id);
+        debug!("Container cleanup completed: {}", handle.id);
         Ok(())
     }
 
     /// Cleans up all tracked containers, continuing on errors and counting failures.
     pub async fn cleanup_all_containers(&mut self) -> Result<(), ContainerError> {
         let container_count = self.active_containers.len();
-        info!("Starting cleanup of {} active containers", container_count);
+        if container_count > 0 {
+            info!("Cleaning up {} active containers", container_count);
+        }
 
         let container_handles: Vec<ContainerHandle> =
             self.active_containers.values().cloned().collect();
@@ -215,21 +211,23 @@ impl ContainerManager {
 
         self.active_containers.clear();
         self.stats.active_count = 0;
-        info!(
-            "Completed cleanup of all containers (failures: {})",
-            self.stats.failed_count
-        );
+
+        if container_count > 0 {
+            info!(
+                "Container cleanup completed (failures: {})",
+                self.stats.failed_count
+            );
+        }
         Ok(())
     }
 
     /// Returns a snapshot of current counters. `active_count` is recomputed
     /// from the current registry to stay accurate.
     pub fn get_container_stats(&self) -> ContainerStats {
-        // Update active count to reflect current state
         let mut stats = self.stats.clone();
         stats.active_count = self.active_containers.len();
         debug!(
-            "Retrieved container stats: active={}, total={}, failed={}",
+            "Container stats: active={}, total={}, failed={}",
             stats.active_count, stats.total_created, stats.failed_count
         );
         stats
@@ -265,7 +263,7 @@ impl ContainerManager {
             .map(|output| output.status.success())
             .unwrap_or(false);
 
-        debug!("systemd-nspawn availability check: {}", available);
+        debug!("systemd-nspawn availability: {}", available);
         available
     }
 
@@ -275,7 +273,7 @@ impl ContainerManager {
         service_config: &ServiceConfig,
         container_id: &str,
     ) -> Result<ContainerHandle, ContainerError> {
-        debug!("Starting nspawn container creation for: {}", container_id);
+        debug!("Creating systemd-nspawn container: {}", container_id);
 
         // Create a basic container directory structure
         let container_path = format!("/tmp/miel-containers/{}", container_id);
@@ -331,10 +329,7 @@ impl ContainerManager {
 
         // Bind the log directory so it's accessible from within the container
         cmd.arg(format!("--bind={}", log_dir));
-        debug!(
-            "Bound log directory {} to container {}",
-            log_dir, container_id
-        );
+        debug!("Log directory bound to container: {}", log_dir);
 
         // Bind essential host dirs so common binaries and their libs are available
         // inside the minimal rootfs. Only bind paths that exist on the host.
@@ -357,10 +352,7 @@ impl ContainerManager {
                 bound_paths += 1;
             }
         }
-        debug!(
-            "Bound {} system paths for container {}",
-            bound_paths, container_id
-        );
+        debug!("Bound {} system paths to container", bound_paths);
 
         cmd.arg(format!("--machine={}", container_id))
             .stdin(Stdio::piped())
@@ -369,10 +361,7 @@ impl ContainerManager {
 
         // Allocate an ephemeral host port for the service
         let host_port = self.allocate_ephemeral_port(&service_config.protocol)?;
-        debug!(
-            "Allocated ephemeral port {} for container {}",
-            host_port, container_id
-        );
+        debug!("Allocated ephemeral port {} for container", host_port);
 
         // Add the service command to run
         cmd.arg("--").arg("/bin/sh").arg("-c");
@@ -380,8 +369,8 @@ impl ContainerManager {
         cmd.arg(&service_command);
 
         debug!(
-            "Spawning nspawn process for container {} with command: {:?}",
-            container_id, service_command
+            "Starting systemd-nspawn process for container: {}",
+            container_id
         );
 
         // Start the process
@@ -396,7 +385,7 @@ impl ContainerManager {
             let cid = container_id.to_string();
             tokio::spawn(async move {
                 while let Ok(Some(line)) = reader.next_line().await {
-                    debug!("[nspawn:{}][stderr] {}", cid, line);
+                    debug!("[container:{}][stderr] {}", cid, line);
                 }
                 debug!("stderr monitoring ended for container: {}", cid);
             });
@@ -412,7 +401,7 @@ impl ContainerManager {
             let cid = container_id.to_string();
             tokio::spawn(async move {
                 while let Ok(Some(line)) = reader.next_line().await {
-                    debug!("[nspawn:{}][stdout] {}", cid, line);
+                    debug!("[container:{}][stdout] {}", cid, line);
                     // Also write to the unified log file
                     if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&log_path) {
                         use std::io::Write;

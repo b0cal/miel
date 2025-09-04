@@ -42,10 +42,7 @@ impl DatabaseStorage {
     /// This method should be used when creating storage from application configuration.
     pub async fn from_config_path<P: AsRef<Path>>(storage_path: P) -> Result<Self, StorageError> {
         let db_path = storage_path.as_ref().join(Self::DEFAULT_DB_FILE);
-        info!(
-            "Using DatabaseStorage from configured storage path: {}",
-            db_path.display()
-        );
+        debug!("Initializing database storage at: {}", db_path.display());
         Self::new_file(db_path).await
     }
 
@@ -60,15 +57,18 @@ impl DatabaseStorage {
             if let Some(parent) = db_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?;
             }
-            info!(
-                "Using DatabaseStorage from MIEL_STORAGE_PATH environment variable: {}",
+            debug!(
+                "Using database storage from MIEL_STORAGE_PATH: {}",
                 db_path.display()
             );
             return Self::new_file(db_path).await;
         }
         let cwd = env::current_dir().map_err(|_| StorageError::ConnectionFailed)?;
         let path = cwd.join(Self::DEFAULT_DB_FILE);
-        info!("Using default DatabaseStorage at: {}", path.display());
+        debug!(
+            "Using database storage in current directory: {}",
+            path.display()
+        );
         Self::new_file(path).await
     }
 
@@ -80,12 +80,12 @@ impl DatabaseStorage {
         if let Some(parent) = path_ref.parent() {
             std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?;
         }
-        info!("Connecting to SQLite at: {}", path_ref.display());
+        debug!("Connecting to SQLite database: {}", path_ref.display());
         // DSN understood by sea-orm/sqlx driver; will create file if needed
         let dsn = format!("sqlite://{}?mode=rwc", path_ref.to_string_lossy());
 
         let conn = Database::connect(dsn).await.map_err(|e| {
-            error!("DB connect failed: {}", e);
+            error!("Failed to connect to database: {}", e);
             StorageError::ConnectionFailed
         })?;
 
@@ -96,12 +96,12 @@ impl DatabaseStorage {
         ))
         .await
         .map_err(|e| {
-            error!("Failed to enable foreign_keys PRAGMA: {}", e);
+            error!("Failed to enable foreign keys: {}", e);
             StorageError::WriteFailed
         })?;
 
         // create schema
-        debug!("Ensuring sessions table exists");
+        debug!("Creating database schema if not exists");
         conn.execute(Statement::from_string(
             DbBackend::Sqlite,
             r#"
@@ -124,7 +124,6 @@ impl DatabaseStorage {
             StorageError::WriteFailed
         })?;
 
-        debug!("Ensuring interactions table exists");
         conn.execute(Statement::from_string(
             DbBackend::Sqlite,
             r#"
@@ -143,7 +142,6 @@ impl DatabaseStorage {
             StorageError::WriteFailed
         })?;
 
-        debug!("Ensuring artifacts table exists");
         conn.execute(Statement::from_string(
             DbBackend::Sqlite,
             r#"
@@ -161,7 +159,7 @@ impl DatabaseStorage {
             StorageError::WriteFailed
         })?;
 
-        info!("SQLite connection ready");
+        debug!("Database storage initialized successfully");
         Ok(Self { conn })
     }
 
