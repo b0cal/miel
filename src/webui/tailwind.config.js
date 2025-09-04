@@ -22,8 +22,9 @@ export default {
         },
       },
       fontFamily: {
-        'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        'mono': ['Fira Code Variable'],
+        'sans': ['Fira Code', 'Consolas', 'Monaco', 'Courier New', 'monospace'],
+        'mono': ['Fira Code', 'Consolas', 'Monaco', 'Courier New', 'monospace'],
+        'serif': ['Fira Code', 'Consolas', 'Monaco', 'Courier New', 'monospace'],
       },
       animation: {
         'pulse-orange': 'pulse-orange 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',

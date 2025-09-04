@@ -150,7 +150,7 @@ const Dashboard = () => {
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-white text-xl font-bold">{dashboardData.packetsPerHour}</span>
+          <span className="text-white text-xl font-mono">{dashboardData.packetsPerHour}</span>
         </div>
       </div>
     )
@@ -228,16 +228,16 @@ for Enhanced Learning`}
             {/* Packets per Hour */}
             <div className="dashboard-card p-6">
               <div className="flex justify-center mb-4">
-                <CircularProgress value={75} />
+                <CircularProgress value={dashboardData.packetsPerHour} />
               </div>
               <p className="text-center text-orange-400">packet/hr</p>
             </div>
 
             {/* Top Suspect IPs */}
             <div className="dashboard-card p-4">
-              <h3 className="text-lg font-semibold mb-4">Top suspect IPs</h3>
+              <h3 className="text-lg font-mono mb-4">Top suspect IPs</h3>
               <div className="space-y-2">
-                <div className="flex justify-between text-sm font-semibold border-b border-gray-600 pb-2">
+                <div className="flex justify-between text-sm font-mono border-b border-gray-600 pb-2">
                   <span>IP address</span>
                   <span># of detections</span>
                 </div>
@@ -255,7 +255,7 @@ for Enhanced Learning`}
           <div className="col-span-12 md:col-span-6 space-y-4">
             {/* CPU Usage Chart */}
             <div className="dashboard-card p-4">
-              <h3 className="text-lg font-semibold mb-4">Network Activity</h3>
+              <h3 className="text-lg font-mono mb-4">Network Activity</h3>
               <div className="h-48">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={networkData}>
@@ -281,7 +281,7 @@ for Enhanced Learning`}
 
             {/* Multi-purpose Dashboard */}
             <div className="dashboard-card p-4">
-              <h3 className="text-lg font-semibold mb-4">Possible detected threats</h3>
+              <h3 className="text-lg font-mono mb-4">Possible detected threats</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={networkData}>
@@ -305,26 +305,26 @@ for Enhanced Learning`}
             <div className="grid grid-cols-3 gap-2">
               <div className="metric-card">
                 <div className="text-white text-xs xs:text-[0.2rem] mb-1">Memory</div>
-                <div className="text-orange-400 text-sm font-bold">
+                <div className="text-orange-400 text-sm font-mono">
                   {dashboardData.memoryUsage}%
                 </div>
               </div>
               <div className="metric-card">
                 <div className="text-white text-xs mb-1">Storage</div>
-                <div className="text-orange-400 text-sm font-bold">
+                <div className="text-orange-400 text-sm font-mono">
                   {dashboardData.databaseStorage}%
                 </div>
               </div>
               <div className="metric-card">
                 <div className="text-white text-xs mb-1">Uptime</div>
-                <div className="text-orange-400 text-sm font-bold">24h</div>
+                <div className="text-orange-400 text-sm font-mono">24h</div>
               </div>
             </div>
 
             {/* Most Attacked Service */}
             <div className="dashboard-card p-4">
-              <h4 className="font-semibold mb-2">Most attacked service</h4>
-              <div className="text-2xl text-orange-400 font-bold mb-1">
+              <h4 className="font-mono mb-2">Most attacked service</h4>
+              <div className="text-2xl text-orange-400 font-mono mb-1">
                 {dashboardData.mostAttackedService.service || 'HTTP'}
               </div>
               <div className="mt-2 text-xs text-gray-500">

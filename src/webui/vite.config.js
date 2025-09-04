@@ -13,12 +13,12 @@ export default defineConfig({
     open: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
         ws: true, // Enable WebSocket proxying
-      }
-    }
+      },
+    },
   },
   
   // Build configuration
@@ -27,9 +27,9 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html')
-      }
-    }
+        main: resolve(__dirname, 'index.html'),
+      },
+    },
   },
   
   // Path aliases
@@ -41,13 +41,13 @@ export default defineConfig({
       '@utils': resolve(__dirname, 'src/utils'),
       '@styles': resolve(__dirname, 'src/styles'),
       '@assets': resolve(__dirname, 'src/assets'),
-    }
+    },
   },
   
   // CSS configuration
   css: {
     postcss: './postcss.config.js',
-    devSourcemap: true
+    devSourcemap: true,
   },
   
   // Environment variables
@@ -57,6 +57,6 @@ export default defineConfig({
   
   // Optimization
   optimizeDeps: {
-    include: ['react', 'react-dom', 'recharts', 'lucide-react', 'axios']
-  }
+    include: ['react', 'react-dom', 'recharts', 'lucide-react', 'axios'],
+  },
 })

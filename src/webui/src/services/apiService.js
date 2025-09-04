@@ -1,6 +1,6 @@
 // services/apiService.js
 
-const API_BASE_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:8080/api'
+const API_BASE_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:3000/'
 
 class ApiService {
   constructor() {
@@ -33,7 +33,7 @@ class ApiService {
 
   async getClientAddressesOrdered(){
     try {
-      const sessions = await this.request('/api/sessions')
+      const sessions = await this.request('api/sessions')
       const clientAddresses = sessions.map(session => session.client_addr)
     
       // Count occurrences of each address
@@ -154,11 +154,11 @@ class ApiService {
 
     const totalBytesTransfered = timeline.reduce((acc, bytes) => acc + bytes, 0)
 
-    return totalBytesTransfered / 24
+    return (totalBytesTransfered / 24 || 25)
   }
 
   async getMostAttackedService() {
-    const sessions = await this.request('/api/sessions')
+    const sessions = await this.request('api/sessions')
 
     const serviceNames = sessions.map(session =>  session.service_name)
 

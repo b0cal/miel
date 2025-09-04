@@ -39,7 +39,7 @@ impl WebServer {
             .or(get_session_data)
             .or(download_artifacts);
 
-        let addr: SocketAddr = ([0, 0, 0, 0], port).into();
+        let addr: SocketAddr = ([127, 0, 0, 1], port).into();
 
         info!("WebUI starting on port {}", port);
 
