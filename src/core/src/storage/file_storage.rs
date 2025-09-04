@@ -490,14 +490,15 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        f.write_all(artifacts.stdio_stdout.as_bytes()).map_err(|e| {
-            error!(
-                "Write failed: {}: {}",
-                sanitize_path(&dir.join("stdio_stdout.bin")),
-                e
-            );
-            StorageError::WriteFailed
-        })?;
+        f.write_all(artifacts.stdio_stdout.as_bytes())
+            .map_err(|e| {
+                error!(
+                    "Write failed: {}: {}",
+                    sanitize_path(&dir.join("stdio_stdout.bin")),
+                    e
+                );
+                StorageError::WriteFailed
+            })?;
         let mut f = File::create(dir.join("stdio_stderr.bin")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
@@ -506,14 +507,15 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        f.write_all(artifacts.stdio_stderr.as_bytes()).map_err(|e| {
-            error!(
-                "Write failed: {}: {}",
-                sanitize_path(&dir.join("stdio_stderr.bin")),
-                e
-            );
-            StorageError::WriteFailed
-        })?;
+        f.write_all(artifacts.stdio_stderr.as_bytes())
+            .map_err(|e| {
+                error!(
+                    "Write failed: {}: {}",
+                    sanitize_path(&dir.join("stdio_stderr.bin")),
+                    e
+                );
+                StorageError::WriteFailed
+            })?;
         // timestamps CSV-like
         let mut f = File::create(dir.join("tcp_timestamps.csv")).map_err(|e| {
             error!(

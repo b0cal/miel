@@ -1,12 +1,12 @@
 use chrono::{Duration, Utc};
 use env_logger::Env;
 use log::{info, warn};
+use miel::data_capture::CaptureArtifacts;
 use miel::session::Session;
 use miel::session_management::SessionStatus;
 use miel::storage::database_storage::DatabaseStorage;
 use miel::storage::file_storage::FileStorage;
 use miel::storage::storage_trait::Storage;
-use miel::data_capture::CaptureArtifacts;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -38,7 +38,9 @@ async fn main() {
             "Using DatabaseStorage at {} (no MIEL_DB_PATH)",
             db_path.display()
         );
-        DatabaseStorage::new_file(&db_path).await.expect("create db (file)")
+        DatabaseStorage::new_file(&db_path)
+            .await
+            .expect("create db (file)")
     };
 
     let storage_fs = if env::var("MIEL_FILE_STORAGE_DIR").is_ok() {

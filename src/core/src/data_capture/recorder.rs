@@ -48,11 +48,11 @@ use log::{debug, info};
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
-use crate::error_handling::types::CaptureError;
-use crate::storage::storage_trait::Storage;
 use super::stdio_capture::StdioCapture;
 use super::tcp_capture::TcpCapture;
 use super::types::CaptureArtifacts;
+use crate::error_handling::types::CaptureError;
+use crate::storage::storage_trait::Storage;
 
 /// Orchestrates network and stdio capture for a single session.
 ///
@@ -211,9 +211,9 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    use crate::storage::storage_trait::Storage;
     use crate::data_capture::types::Direction;
     use crate::error_handling::types::StorageError;
+    use crate::storage::storage_trait::Storage;
 
     struct MemStorage {
         inner: StdMutex<Option<CaptureArtifacts>>,
@@ -228,11 +228,17 @@ mod tests {
     }
 
     impl Storage for MemStorage {
-        fn save_session(&self, _session: &crate::session_management::session::Session) -> Result<(), StorageError> {
+        fn save_session(
+            &self,
+            _session: &crate::session_management::session::Session,
+        ) -> Result<(), StorageError> {
             Ok(())
         }
 
-        fn get_sessions(&self, _filter: Option<crate::storage::types::SessionFilter>) -> Result<Vec<crate::session_management::session::Session>, StorageError> {
+        fn get_sessions(
+            &self,
+            _filter: Option<crate::storage::types::SessionFilter>,
+        ) -> Result<Vec<crate::session_management::session::Session>, StorageError> {
             Ok(vec![])
         }
 
@@ -244,7 +250,10 @@ mod tests {
             Ok(vec![])
         }
 
-        fn cleanup_old_sessions(&self, _older_than: chrono::DateTime<chrono::Utc>) -> Result<usize, StorageError> {
+        fn cleanup_old_sessions(
+            &self,
+            _older_than: chrono::DateTime<chrono::Utc>,
+        ) -> Result<usize, StorageError> {
             Ok(0)
         }
 
@@ -281,7 +290,8 @@ mod tests {
         let (client_server_side, mut client_outside) = tcp_pair().await.unwrap();
         let (container_server_side, mut container_inside) = tcp_pair().await.unwrap();
 
-        let storage: Arc<dyn crate::storage::storage_trait::Storage + Send + Sync> = Arc::new(MemStorage::new());
+        let storage: Arc<dyn crate::storage::storage_trait::Storage + Send + Sync> =
+            Arc::new(MemStorage::new());
         let recorder = Arc::new(StreamRecorder::new(Uuid::new_v4(), storage));
 
         let rec2 = Arc::clone(&recorder);

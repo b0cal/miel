@@ -225,13 +225,10 @@ impl Storage for DatabaseStorage {
                         info!("Updated a session");
                     }
                     None => {
-                        session::Entity::insert(am)
-                            .exec(&conn)
-                            .await
-                            .map_err(|e| {
-                                error!("DB write error in save_session insert exec: {}", e);
-                                StorageError::WriteFailed
-                            })?;
+                        session::Entity::insert(am).exec(&conn).await.map_err(|e| {
+                            error!("DB write error in save_session insert exec: {}", e);
+                            StorageError::WriteFailed
+                        })?;
                         info!("Inserted a session");
                     }
                 }
@@ -397,16 +394,13 @@ impl Storage for DatabaseStorage {
                             session_id: Set(id.clone()),
                             json: Set(json),
                         };
-                        art::Entity::insert(am)
-                            .exec(&conn)
-                            .await
-                            .map_err(|e| {
-                                error!(
-                                    "DB write error in save_capture_artifacts insert exec: {}",
-                                    e
-                                );
-                                StorageError::WriteFailed
-                            })?;
+                        art::Entity::insert(am).exec(&conn).await.map_err(|e| {
+                            error!(
+                                "DB write error in save_capture_artifacts insert exec: {}",
+                                e
+                            );
+                            StorageError::WriteFailed
+                        })?;
                         info!("Inserted artifacts for a session");
                     }
                 }

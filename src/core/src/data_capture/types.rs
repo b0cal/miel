@@ -24,8 +24,7 @@ pub enum StdioStream {
     Stderr,
 }
 
-//// Aggregated capture artifacts persisted after a session completes.
-///
+/// Aggregated capture artifacts persisted after a session completes.
 /// TCP payloads are stored as raw bytes for protocol analysis,
 /// while STDIO streams are stored as UTF-8 text for readability.
 #[derive(Debug, Clone, Serialize, Deserialize)]

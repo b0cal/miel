@@ -64,7 +64,10 @@ impl SessionManager {
                     .start_tcp_proxy(request_stream, container_tcp_socket)
                     .await
                     .map_err(|e| {
-                        error!("TCP proxy failed for session {}: {:?}", active_session.session.id, e);
+                        error!(
+                            "TCP proxy failed for session {}: {:?}",
+                            active_session.session.id, e
+                        );
                         SessionError::CreationFailed
                     })?;
             }
@@ -73,8 +76,15 @@ impl SessionManager {
             if let Some(ref container_handle) = active_session.container_handle {
                 if let Some(pty_master) = container_handle.pty_master.as_ref() {
                     let mut recorder = active_session.stream_recorder.lock().await;
-                    if let Err(e) = recorder.start_stdio_capture(pty_master.try_clone().map_err(|_| SessionError::CreationFailed)?) {
-                        warn!("Failed to start stdio capture for session {}: {:?}", active_session.session.id, e);
+                    if let Err(e) = recorder.start_stdio_capture(
+                        pty_master
+                            .try_clone()
+                            .map_err(|_| SessionError::CreationFailed)?,
+                    ) {
+                        warn!(
+                            "Failed to start stdio capture for session {}: {:?}",
+                            active_session.session.id, e
+                        );
                         // Continue execution - stdio capture is optional
                     }
                 }
@@ -122,15 +132,25 @@ impl SessionManager {
         if let Some(ref container_handle) = active_session.container_handle {
             if let Some(pty_master) = container_handle.pty_master.as_ref() {
                 let mut recorder = active_session.stream_recorder.lock().await;
-                if let Err(e) = recorder.start_stdio_capture(pty_master.try_clone().map_err(|_| SessionError::CreationFailed)?) {
-                    warn!("Failed to start stdio capture for new session {}: {:?}", id, e);
+                if let Err(e) = recorder.start_stdio_capture(
+                    pty_master
+                        .try_clone()
+                        .map_err(|_| SessionError::CreationFailed)?,
+                ) {
+                    warn!(
+                        "Failed to start stdio capture for new session {}: {:?}",
+                        id, e
+                    );
                     // Continue execution - stdio capture is optional
                 }
             }
         }
 
         self.active_sessions.insert(id, active_session);
-        info!("Created new session {} with capture lifecycle initialized", id);
+        info!(
+            "Created new session {} with capture lifecycle initialized",
+            id
+        );
 
         Ok(())
     }
@@ -191,13 +211,19 @@ impl SessionManager {
     }
 
     /// Finalizes the capture for a specific session and persists the artifacts
-    pub async fn finalize_session_capture(&mut self, session_id: &Uuid) -> Result<(), SessionError> {
+    pub async fn finalize_session_capture(
+        &mut self,
+        session_id: &Uuid,
+    ) -> Result<(), SessionError> {
         if let Some(active_session) = self.active_sessions.get_mut(session_id) {
             active_session.session.end_time = Some(Utc::now());
 
             // First, save the updated session to ensure it exists in the database
             if let Err(e) = self.storage.save_session(&active_session.session) {
-                error!("Failed to save session {} before finalizing capture: {:?}", session_id, e);
+                error!(
+                    "Failed to save session {} before finalizing capture: {:?}",
+                    session_id, e
+                );
                 active_session.session.status = SessionStatus::Error;
                 return Err(SessionError::CreationFailed);
             }
@@ -205,34 +231,48 @@ impl SessionManager {
             let recorder = active_session.stream_recorder.lock().await;
             match recorder.finalize_capture() {
                 Ok(artifacts) => {
-                    info!("Successfully finalized capture for session {}: {} total bytes captured",
-                          session_id, artifacts.total_bytes);
+                    info!(
+                        "Successfully finalized capture for session {}: {} total bytes captured",
+                        session_id, artifacts.total_bytes
+                    );
 
                     // Update session with capture statistics
                     active_session.session.bytes_transferred = artifacts.total_bytes;
 
                     // Save the updated session again with the final byte count
                     if let Err(e) = self.storage.save_session(&active_session.session) {
-                        error!("Failed to update session {} with final statistics: {:?}", session_id, e);
+                        error!(
+                            "Failed to update session {} with final statistics: {:?}",
+                            session_id, e
+                        );
                         // Continue anyway as the capture was successful
                     }
 
                     Ok(())
                 }
                 Err(e) => {
-                    error!("Failed to finalize capture for session {}: {:?}", session_id, e);
+                    error!(
+                        "Failed to finalize capture for session {}: {:?}",
+                        session_id, e
+                    );
                     active_session.session.status = SessionStatus::Error;
 
                     // Save the error status to database
                     if let Err(save_err) = self.storage.save_session(&active_session.session) {
-                        error!("Failed to save error status for session {}: {:?}", session_id, save_err);
+                        error!(
+                            "Failed to save error status for session {}: {:?}",
+                            session_id, save_err
+                        );
                     }
 
                     Err(SessionError::CaptureError(e))
                 }
             }
         } else {
-            warn!("Attempted to finalize capture for non-existent session: {}", session_id);
+            warn!(
+                "Attempted to finalize capture for non-existent session: {}",
+                session_id
+            );
             Err(SessionError::NotFound)
         }
     }
@@ -245,7 +285,10 @@ impl SessionManager {
 
             // First, save the session with end_time to ensure it exists in the database
             if let Err(e) = self.storage.save_session(&active_session.session) {
-                error!("Failed to save session {} before finalizing capture: {:?}", session_id, e);
+                error!(
+                    "Failed to save session {} before finalizing capture: {:?}",
+                    session_id, e
+                );
                 active_session.session.status = SessionStatus::Error;
             }
 
@@ -253,17 +296,23 @@ impl SessionManager {
 
             match recorder.finalize_capture() {
                 Ok(artifacts) => {
-                    info!("Successfully finalized capture for session {}: {} total bytes captured",
-                          session_id, artifacts.total_bytes);
+                    info!(
+                        "Successfully finalized capture for session {}: {} total bytes captured",
+                        session_id, artifacts.total_bytes
+                    );
                     active_session.session.bytes_transferred = artifacts.total_bytes;
                 }
                 Err(e) => {
-                    error!("Failed to finalize capture for session {}: {:?}", session_id, e);
+                    error!(
+                        "Failed to finalize capture for session {}: {:?}",
+                        session_id, e
+                    );
                     active_session.session.status = SessionStatus::Error;
                 }
             }
 
-            active_session.session.status = if active_session.session.status != SessionStatus::Error {
+            active_session.session.status = if active_session.session.status != SessionStatus::Error
+            {
                 SessionStatus::Completed
             } else {
                 SessionStatus::Error
@@ -272,7 +321,9 @@ impl SessionManager {
             // Clean up container if present
             if let Some(container_handle) = active_session.container_handle.take() {
                 let mut manager = self.container_manager.lock().await;
-                manager.cleanup_container(container_handle).await
+                manager
+                    .cleanup_container(container_handle)
+                    .await
                     .map_err(SessionError::ContainerError)?;
             }
 
@@ -280,7 +331,10 @@ impl SessionManager {
 
             // Update the session in the database with final status and statistics
             if let Err(e) = self.storage.save_session(&active_session.session) {
-                error!("Failed to update session {} in database: {:?}", session_id, e);
+                error!(
+                    "Failed to update session {} in database: {:?}",
+                    session_id, e
+                );
             } else {
                 info!("Session {} status updated in database", session_id);
             }
@@ -293,7 +347,9 @@ impl SessionManager {
 
     /// Get access to a session's stream recorder for additional capture operations
     pub fn get_session_recorder(&self, session_id: &Uuid) -> Option<Arc<Mutex<StreamRecorder>>> {
-        self.active_sessions.get(session_id).map(|session| session.stream_recorder.clone())
+        self.active_sessions
+            .get(session_id)
+            .map(|session| session.stream_recorder.clone())
     }
 
     /// Trigger stdio capture for a specific session if PTY is available
@@ -302,9 +358,17 @@ impl SessionManager {
             if let Some(ref container_handle) = active_session.container_handle {
                 if let Some(pty_master) = container_handle.pty_master.as_ref() {
                     let mut recorder = active_session.stream_recorder.lock().await;
-                    recorder.start_stdio_capture(pty_master.try_clone().map_err(|_| SessionError::CreationFailed)?)
+                    recorder
+                        .start_stdio_capture(
+                            pty_master
+                                .try_clone()
+                                .map_err(|_| SessionError::CreationFailed)?,
+                        )
                         .map_err(SessionError::CaptureError)?;
-                    info!("Manually triggered stdio capture for session {}", session_id);
+                    info!(
+                        "Manually triggered stdio capture for session {}",
+                        session_id
+                    );
                     Ok(())
                 } else {
                     warn!("No PTY available for session {}", session_id);
@@ -320,14 +384,21 @@ impl SessionManager {
     }
 
     /// Get session statistics including capture information
-    pub fn get_session_stats(&self, session_id: &Uuid) -> Option<(SessionStatus, u64, chrono::Duration)> {
+    pub fn get_session_stats(
+        &self,
+        session_id: &Uuid,
+    ) -> Option<(SessionStatus, u64, chrono::Duration)> {
         self.active_sessions.get(session_id).map(|session| {
             let duration = if let Some(end_time) = session.session.end_time {
                 end_time - session.session.start_time
             } else {
                 Utc::now() - session.session.start_time
             };
-            (session.session.status.clone(), session.session.bytes_transferred, duration)
+            (
+                session.session.status.clone(),
+                session.session.bytes_transferred,
+                duration,
+            )
         })
     }
 

@@ -18,10 +18,10 @@ async fn main() {
     // Configure logging with specific levels the different modules
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
-        .filter_module("sea_orm", log::LevelFilter::Warn)  // Reduce ORM logging
-        .filter_module("sqlx", log::LevelFilter::Warn)     // Reduce SQLx logging
+        .filter_module("sea_orm", log::LevelFilter::Warn) // Reduce ORM logging
+        .filter_module("sqlx", log::LevelFilter::Warn) // Reduce SQLx logging
         .filter_module("sea_orm::query", log::LevelFilter::Error) // Suppress query logs
-        .filter_module("sqlx::query", log::LevelFilter::Error)    // Suppress SQLx query logs
+        .filter_module("sqlx::query", log::LevelFilter::Error) // Suppress SQLx query logs
         .format_target(false)
         .init();
 
