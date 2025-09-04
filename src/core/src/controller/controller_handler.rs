@@ -25,9 +25,9 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub fn new(config: Config) -> Result<Self, ControllerError> {
+    pub async fn new(config: Config) -> Result<Self, ControllerError> {
         let container_manager = ContainerManager::new().unwrap();
-        let storage: Arc<dyn Storage + Send + Sync> = Arc::new(DatabaseStorage::new().unwrap());
+        let storage: Arc<dyn Storage + Send + Sync> = Arc::new(DatabaseStorage::new().await.unwrap());
         let session_manager = SessionManager::new(
             Arc::new(tokio::sync::Mutex::new(container_manager.clone())),
             storage.clone(),
@@ -145,8 +145,31 @@ impl Controller {
             .cloned()
             .unwrap();
 
+        // Handle the session and trigger capture lifecycle
         self.session_manager.handle_session(request, &service).await?;
+
+        info!("Session handling completed with capture lifecycle initialized");
         Ok(())
+    }
+
+    /// Manually trigger capture finalization for a specific session
+    async fn finalize_session_capture(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+        self.session_manager.finalize_session_capture(session_id).await
+    }
+
+    /// Manually end a session and finalize its capture
+    async fn end_session(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+        self.session_manager.end_session(session_id).await
+    }
+
+    /// Get session statistics including capture information
+    fn get_session_stats(&self, session_id: &uuid::Uuid) -> Option<(crate::SessionStatus, u64, chrono::Duration)> {
+        self.session_manager.get_session_stats(session_id)
+    }
+
+    /// Trigger stdio capture for a specific session
+    async fn trigger_stdio_capture(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+        self.session_manager.trigger_stdio_capture(session_id).await
     }
 
     fn find_config_for_service(&self, service_name: &str) -> Option<&ServiceConfig> {
@@ -260,7 +283,7 @@ mod tests {
             port
         );
 
-        let mut controller = Controller::new(config).unwrap();
+        let mut controller = Controller::new(config).await.unwrap();
         debug!("Controller initialized");
 
         debug!("Starting controller...");

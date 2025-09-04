@@ -211,7 +211,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    use crate::data_capture::storage::Storage;
+    use crate::storage::storage_trait::Storage;
     use crate::data_capture::types::Direction;
     use crate::error_handling::types::StorageError;
 
@@ -228,6 +228,26 @@ mod tests {
     }
 
     impl Storage for MemStorage {
+        fn save_session(&self, _session: &crate::session_management::session::Session) -> Result<(), StorageError> {
+            Ok(())
+        }
+
+        fn get_sessions(&self, _filter: Option<crate::storage::types::SessionFilter>) -> Result<Vec<crate::session_management::session::Session>, StorageError> {
+            Ok(vec![])
+        }
+
+        fn save_interaction(&self, _session_id: Uuid, _data: &[u8]) -> Result<(), StorageError> {
+            Ok(())
+        }
+
+        fn get_session_data(&self, _session_id: Uuid) -> Result<Vec<u8>, StorageError> {
+            Ok(vec![])
+        }
+
+        fn cleanup_old_sessions(&self, _older_than: chrono::DateTime<chrono::Utc>) -> Result<usize, StorageError> {
+            Ok(0)
+        }
+
         fn save_capture_artifacts(&self, artifacts: &CaptureArtifacts) -> Result<(), StorageError> {
             *self.inner.lock().unwrap() = Some(artifacts.clone());
             Ok(())
@@ -261,7 +281,7 @@ mod tests {
         let (client_server_side, mut client_outside) = tcp_pair().await.unwrap();
         let (container_server_side, mut container_inside) = tcp_pair().await.unwrap();
 
-        let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
+        let storage: Arc<dyn crate::storage::storage_trait::Storage + Send + Sync> = Arc::new(MemStorage::new());
         let recorder = Arc::new(StreamRecorder::new(Uuid::new_v4(), storage));
 
         let rec2 = Arc::clone(&recorder);

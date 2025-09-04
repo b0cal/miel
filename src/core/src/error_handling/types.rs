@@ -29,6 +29,7 @@ pub enum SessionError {
     ContainerError(ContainerError),
     StorageError(StorageError),
     CaptureError(CaptureError),
+    NotFound,
 }
 
 #[derive(Debug)]
