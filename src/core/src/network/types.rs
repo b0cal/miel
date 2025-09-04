@@ -12,10 +12,15 @@ pub struct ServicePattern {
     pub banner_patterns: Vec<String>,
 }
 
-#[derive(Clone)]
-pub struct SessionRequest<S = TcpStream> {
-    pub stream: S,
+pub struct SessionRequest {
+    pub stream: Option<TcpStream>,
     pub service_name: String,
     pub client_addr: SocketAddr,
     pub timestamp: DateTime<Utc>,
+}
+
+impl SessionRequest {
+    pub fn take_stream(&mut self) -> Option<TcpStream> {
+        self.stream.take()
+    }
 }

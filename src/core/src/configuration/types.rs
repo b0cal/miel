@@ -1,6 +1,22 @@
 use serde::Deserialize;
 use std::net::IpAddr;
 
+/// Storage backend options for the application
+#[derive(Debug, PartialEq, Clone, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum StorageBackend {
+    #[value(name = "filesystem")]
+    FileSystem,
+    #[value(name = "database")]
+    Database,
+}
+
+impl Default for StorageBackend {
+    fn default() -> Self {
+        Self::Database
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 #[serde(default)]
 pub struct IpFilter {
@@ -77,7 +93,6 @@ pub enum Protocol {
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
-#[serde(default)]
 pub struct ServiceConfig {
     pub name: String,
     pub port: u16,

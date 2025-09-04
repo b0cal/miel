@@ -1,9 +1,9 @@
 //! Filesystem-backed storage implementation.
 //!
 //! This backend persists sessions as human-readable text files, interactions as
-//! binary blobs, and artifacts in a per-session directory tree. It’s intended
+//! binary blobs, and artifacts in a per-session directory tree. It's intended
 //! for easy inspection and simple deployments. The root directory can be
-//! provided via `MIEL_FILE_STORAGE_DIR` or specified explicitly.
+//! provided via `MIEL_STORAGE_PATH` or specified explicitly.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -11,9 +11,11 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::data_capture::types::{CaptureArtifacts, Direction, StdioStream};
 use crate::error_handling::types::StorageError;
+use crate::session::Session;
 use crate::storage::storage_trait::Storage;
-use crate::storage::types::{CaptureArtifacts, Direction, Session, SessionFilter, StdioStream};
+use crate::storage::types::SessionFilter;
 use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use uuid::Uuid;
@@ -89,18 +91,41 @@ impl FileStorage {
         })
     }
 
-    /// Create a `FileStorage` using `MIEL_FILE_STORAGE_DIR` if set, otherwise the current directory.
+    /// Create a `FileStorage` using the configured storage path.
+    /// This method should be used when creating storage from application configuration.
+    pub fn from_config_path<P: AsRef<Path>>(storage_path: P) -> Result<Self, StorageError> {
+        let base_path = storage_path.as_ref().join("file_storage");
+        info!(
+            "Using FileStorage from configured storage path: {}",
+            base_path.display()
+        );
+        Self::new(base_path)
+    }
+
+    /// Create a `FileStorage` using `MIEL_STORAGE_PATH` if set, otherwise the current directory.
+    ///
+    /// This method respects the `MIEL_STORAGE_PATH` environment variable for both configuration
+    /// and environment-based deployments. File storage will be created in a 'file_storage'
+    /// subdirectory within the specified path.
     pub fn new_default() -> Result<Self, StorageError> {
-        if let Ok(dir) = std::env::var("MIEL_FILE_STORAGE_DIR") {
-            info!("Using FileStorage from environment-defined directory");
-            return Self::new(PathBuf::from(dir));
+        if let Ok(storage_dir) = std::env::var("MIEL_STORAGE_PATH") {
+            let base_path = std::path::PathBuf::from(storage_dir).join("file_storage");
+            info!(
+                "Using FileStorage from MIEL_STORAGE_PATH environment variable: {}",
+                base_path.display()
+            );
+            return Self::new(base_path);
         }
         let cwd = std::env::current_dir().map_err(|e| {
             error!("Failed to get current dir: {}", e);
             StorageError::ReadFailed
         })?;
-        info!("Using FileStorage at current directory");
-        Self::new(cwd)
+        let base_path = cwd.join("file_storage");
+        info!(
+            "Using FileStorage at current directory: {}",
+            base_path.display()
+        );
+        Self::new(base_path)
     }
 
     fn sessions_dir(&self) -> PathBuf {
@@ -472,7 +497,7 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        f.write_all(&artifacts.stdio_stdin).map_err(|e| {
+        f.write_all(artifacts.stdio_stdin.as_bytes()).map_err(|e| {
             error!(
                 "Write failed: {}: {}",
                 sanitize_path(&dir.join("stdio_stdin.bin")),
@@ -488,14 +513,15 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        f.write_all(&artifacts.stdio_stdout).map_err(|e| {
-            error!(
-                "Write failed: {}: {}",
-                sanitize_path(&dir.join("stdio_stdout.bin")),
-                e
-            );
-            StorageError::WriteFailed
-        })?;
+        f.write_all(artifacts.stdio_stdout.as_bytes())
+            .map_err(|e| {
+                error!(
+                    "Write failed: {}: {}",
+                    sanitize_path(&dir.join("stdio_stdout.bin")),
+                    e
+                );
+                StorageError::WriteFailed
+            })?;
         let mut f = File::create(dir.join("stdio_stderr.bin")).map_err(|e| {
             error!(
                 "Create failed: {}: {}",
@@ -504,14 +530,15 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        f.write_all(&artifacts.stdio_stderr).map_err(|e| {
-            error!(
-                "Write failed: {}: {}",
-                sanitize_path(&dir.join("stdio_stderr.bin")),
-                e
-            );
-            StorageError::WriteFailed
-        })?;
+        f.write_all(artifacts.stdio_stderr.as_bytes())
+            .map_err(|e| {
+                error!(
+                    "Write failed: {}: {}",
+                    sanitize_path(&dir.join("stdio_stderr.bin")),
+                    e
+                );
+                StorageError::WriteFailed
+            })?;
         // timestamps CSV-like
         let mut f = File::create(dir.join("tcp_timestamps.csv")).map_err(|e| {
             error!(
@@ -714,9 +741,9 @@ impl Storage for FileStorage {
             session_id,
             tcp_client_to_container,
             tcp_container_to_client,
-            stdio_stdin,
-            stdio_stdout,
-            stdio_stderr,
+            stdio_stdin: String::from_utf8_lossy(&stdio_stdin).to_string(),
+            stdio_stdout: String::from_utf8_lossy(&stdio_stdout).to_string(),
+            stdio_stderr: String::from_utf8_lossy(&stdio_stderr).to_string(),
             tcp_timestamps,
             stdio_timestamps,
             total_bytes,
@@ -787,9 +814,9 @@ mod tests {
             session_id: id,
             tcp_client_to_container: b"c2s".to_vec(),
             tcp_container_to_client: b"s2c".to_vec(),
-            stdio_stdin: b"in".to_vec(),
-            stdio_stdout: b"out".to_vec(),
-            stdio_stderr: b"err".to_vec(),
+            stdio_stdin: "in".to_string(),
+            stdio_stdout: "out".to_string(),
+            stdio_stderr: "err".to_string(),
             tcp_timestamps: vec![
                 (now, Direction::ClientToContainer, 3),
                 (now, Direction::ContainerToClient, 3),

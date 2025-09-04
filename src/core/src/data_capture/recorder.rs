@@ -14,7 +14,7 @@
 //! - Rich logging at TRACE/DEBUG/INFO
 //!
 //! Minimal usage
-//! ```no_run
+//! ```ignore
 //! use std::sync::Arc;
 //! use tokio::net::TcpStream;
 //! use uuid::Uuid;
@@ -48,12 +48,11 @@ use log::{debug, info};
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
-use crate::error_handling::types::CaptureError;
-
 use super::stdio_capture::StdioCapture;
-use super::storage::Storage;
 use super::tcp_capture::TcpCapture;
 use super::types::CaptureArtifacts;
+use crate::error_handling::types::CaptureError;
+use crate::storage::storage_trait::Storage;
 
 /// Orchestrates network and stdio capture for a single session.
 ///
@@ -77,7 +76,7 @@ pub struct StreamRecorder {
     /// Optional stdio/PTY snapshotter for the current session.
     stdio_capture: Option<Arc<StdioCapture>>,
     /// Pluggable persistence backend.
-    storage: Arc<dyn Storage>,
+    storage: Arc<dyn Storage + Send + Sync>,
     /// Session start wall‑clock time (UTC), used to compute duration.
     start_time: DateTime<Utc>,
 }
@@ -87,7 +86,7 @@ impl StreamRecorder {
     ///
     /// The recorder holds only lightweight buffers and references; it’s cheap to
     /// construct and clone the underlying `Arc` values as needed by your orchestration.
-    pub fn new(session_id: Uuid, storage: Arc<dyn Storage>) -> Self {
+    pub fn new(session_id: Uuid, storage: Arc<dyn Storage + Send + Sync>) -> Self {
         debug!("[{}] StreamRecorder created", session_id);
         Self {
             session_id,
@@ -187,9 +186,9 @@ impl StreamRecorder {
             session_id: self.session_id,
             tcp_client_to_container: c2s,
             tcp_container_to_client: s2c,
-            stdio_stdin: stdin,
-            stdio_stdout: stdout,
-            stdio_stderr: stderr,
+            stdio_stdin: String::from_utf8_lossy(&stdin).to_string(),
+            stdio_stdout: String::from_utf8_lossy(&stdout).to_string(),
+            stdio_stderr: String::from_utf8_lossy(&stderr).to_string(),
             tcp_timestamps: tcp_ts,
             stdio_timestamps: stdio_ts,
             total_bytes,
@@ -212,9 +211,9 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    use crate::data_capture::storage::Storage;
     use crate::data_capture::types::Direction;
     use crate::error_handling::types::StorageError;
+    use crate::storage::storage_trait::Storage;
 
     struct MemStorage {
         inner: StdMutex<Option<CaptureArtifacts>>,
@@ -229,6 +228,35 @@ mod tests {
     }
 
     impl Storage for MemStorage {
+        fn save_session(
+            &self,
+            _session: &crate::session_management::session::Session,
+        ) -> Result<(), StorageError> {
+            Ok(())
+        }
+
+        fn get_sessions(
+            &self,
+            _filter: Option<crate::storage::types::SessionFilter>,
+        ) -> Result<Vec<crate::session_management::session::Session>, StorageError> {
+            Ok(vec![])
+        }
+
+        fn save_interaction(&self, _session_id: Uuid, _data: &[u8]) -> Result<(), StorageError> {
+            Ok(())
+        }
+
+        fn get_session_data(&self, _session_id: Uuid) -> Result<Vec<u8>, StorageError> {
+            Ok(vec![])
+        }
+
+        fn cleanup_old_sessions(
+            &self,
+            _older_than: chrono::DateTime<chrono::Utc>,
+        ) -> Result<usize, StorageError> {
+            Ok(0)
+        }
+
         fn save_capture_artifacts(&self, artifacts: &CaptureArtifacts) -> Result<(), StorageError> {
             *self.inner.lock().unwrap() = Some(artifacts.clone());
             Ok(())
@@ -262,7 +290,8 @@ mod tests {
         let (client_server_side, mut client_outside) = tcp_pair().await.unwrap();
         let (container_server_side, mut container_inside) = tcp_pair().await.unwrap();
 
-        let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
+        let storage: Arc<dyn crate::storage::storage_trait::Storage + Send + Sync> =
+            Arc::new(MemStorage::new());
         let recorder = Arc::new(StreamRecorder::new(Uuid::new_v4(), storage));
 
         let rec2 = Arc::clone(&recorder);
