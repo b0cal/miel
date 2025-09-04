@@ -96,7 +96,6 @@ const Dashboard = () => {
 
 
   const handleExport = () => {
-    console.log('Exporting data...')
     // Implement export functionality
     const dataToExport = {
       timestamp: new Date().toISOString(),
@@ -241,8 +240,8 @@ for Enhanced Learning`}
                   <span>IP address</span>
                   <span># of detections</span>
                 </div>
-                {topThreats.map((threat, index) => (
-                  <div key={index} className="threat-row">
+                {topThreats.map((threat) => (
+                  <div key={threat.ip} className="threat-row">
                     <span className="text-orange-400">{threat.ip}</span>
                     <span>{threat.detections}</span>
                   </div>
@@ -334,21 +333,13 @@ for Enhanced Learning`}
 
             {/* Utils Buttons */}
             <div className="space-y-2">
-              {[
-                { name: 'Export', icon: Download },
-              ].map((item, index) => {
-                const Icon = item.icon
-                return (
-                  <button
-                    key={index}
-                    className="w-full dashboard-card p-2 flex items-center space-x-2 hover:bg-gray-800"
-                    onClick={item.name === 'Export' ? handleExport : undefined}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.name}</span>
-                  </button>
-                )
-              })}
+              <button
+                className="w-full dashboard-card p-2 flex items-center space-x-2 hover:bg-gray-800"
+                onClick={handleExport}
+              >
+                <Download className="h-4 w-4" />
+                <span>Export</span>
+              </button>
             </div>
           </div>
         </div>

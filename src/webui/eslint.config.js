@@ -50,7 +50,7 @@ export default [
       // General rules
       'no-unused-vars': ['error', { 
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_' 
+        varsIgnorePattern: '^_',
       }],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'prefer-const': 'error',
