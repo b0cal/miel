@@ -1,7 +1,7 @@
 use super::types::*;
 use crate::error_handling::types::ConfigError;
 use clap::Parser;
-use log::error;
+use log::{error, info};
 use regex::Regex;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -21,6 +21,7 @@ use std::{env, fs};
 /// - `services`: a list of `ServiceConfig` used further by the *Container Manager* to configure the services
 /// - `bind_address`: For server binding
 /// - `storage_path`: Path locating where the data should be persistently stored
+/// - `storage_backend`: Choice between filesystem or database storage backend
 /// - `web_ui_enabled`: If `true`, will start the web UI service
 /// - `web_ui_port`: Port on which to expose the web UI service
 /// - `max_sessions`: Limiting the number of concurrent sessions to avoid DDOS and overload in general
@@ -59,6 +60,17 @@ pub struct Config {
     /// Use `--storage-path <PATH>` to set this value from the CLI
     #[arg(long)]
     pub storage_path: PathBuf,
+
+    /// Storage backend to use for persisting data.
+    ///
+    /// Specifies whether to use filesystem-based storage or database-based storage.
+    /// - `filesystem`: Stores data as files in the filesystem
+    /// - `database`: Stores data in a SQLite database
+    ///
+    /// # Command Line
+    /// Use `--storage-backend <BACKEND>` to set this value from the CLI
+    #[arg(long, value_enum)]
+    pub storage_backend: StorageBackend,
 
     /// Enable or disable the web user interface
     ///
@@ -161,6 +173,7 @@ impl Config {
         if Path::new(&service_path).exists() {
             //TODO: might wanna remove this (we keep it because the services default are not
             //currently in files but in the Config::default())
+            info!("Service configuration found in services/ directory");
             config.services.clear();
             for entry in fs::read_dir(&service_path).map_err(ConfigError::IoError)? {
                 let entry = entry.map_err(ConfigError::IoError)?;
@@ -170,6 +183,10 @@ impl Config {
                         fs::read_to_string(&path).map_err(ConfigError::IoError)?;
                     let service: ServiceConfig = toml::from_str(&service_content)
                         .map_err(|e| ConfigError::TomlError(e.to_string()))?;
+                    info!(
+                        "[+] New service {} on port {} imported",
+                        service.name, service.port
+                    );
                     config.services.push(service);
                 }
             }
@@ -327,7 +344,7 @@ impl Default for Config {
             services: vec![
                 ServiceConfig {
                     name: "ssh".to_string(),
-                    port: 22,
+                    port: 2222,
                     protocol: Protocol::TCP,
                     container_image: "ssh-container".to_string(),
                     enabled: true,
@@ -336,7 +353,7 @@ impl Default for Config {
                 },
                 ServiceConfig {
                     name: "http".to_string(),
-                    port: 80,
+                    port: 8080,
                     protocol: Protocol::TCP,
                     container_image: "http-container".to_string(),
                     enabled: true,
@@ -346,8 +363,9 @@ impl Default for Config {
             ],
             bind_address: "0.0.0.0".to_string(),
             storage_path: PathBuf::from("/var/lib/miel"),
+            storage_backend: StorageBackend::Database,
             web_ui_enabled: false,
-            web_ui_port: 8080,
+            web_ui_port: 3000,
             max_sessions: 100,
             session_timeout_secs: 3600,
             ip_filter: IpFilter::default(),
@@ -411,6 +429,7 @@ impl Config {
             services: vec![service],
             bind_address: "192.168.1.1".to_string(),
             storage_path: PathBuf::from("/etc"),
+            storage_backend: StorageBackend::Database,
             web_ui_port: 8080,
             web_ui_enabled: true,
             max_sessions: 100,
@@ -679,7 +698,6 @@ mod tests {
         }
     }
 }
-
 #[cfg(test)]
 mod tests_from_file {
     use super::*;
@@ -736,6 +754,8 @@ mod tests_from_file {
             protocol = "UDP"
             container_image = "dns-container"
             enabled = true
+            header_patterns = []
+            banner_response = "DNS Server v1.0"
         "#;
         write_toml_file(&services_dir.join("dns.toml"), service1);
 
@@ -746,6 +766,7 @@ mod tests_from_file {
             protocol = "TCP"
             container_image = "ftp-container"
             enabled = false
+            header_patterns = ["USER", "PASS"]
         "#;
         write_toml_file(&services_dir.join("ftp.toml"), service2);
 
@@ -800,7 +821,7 @@ mod tests_from_file {
 
         assert_eq!(config.bind_address, "10.0.0.5");
         assert!(!config.web_ui_enabled); // from default
-        assert_eq!(config.web_ui_port, 8080); // from default
+        assert_eq!(config.web_ui_port, 3000); // from default
         assert_eq!(config.max_sessions, 100); // from default
         assert_eq!(config.session_timeout_secs, 3600);
         assert_eq!(config.ip_filter, IpFilter::default());
