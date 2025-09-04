@@ -1,12 +1,12 @@
 use chrono::{Duration, Utc};
 use env_logger::Env;
 use log::{info, warn};
+use miel::session::Session;
 use miel::session_management::SessionStatus;
 use miel::storage::database_storage::DatabaseStorage;
 use miel::storage::file_storage::FileStorage;
 use miel::storage::storage_trait::Storage;
-use miel::storage::types::{CaptureArtifacts};
-use miel::session::Session;
+use miel::data_capture::CaptureArtifacts;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -51,7 +51,7 @@ fn main() {
         FileStorage::new(&out_dir).expect("create file storage (dir)")
     };
 
-    // 1) Create and save a session
+    // Create and save a session
     let session_id = Uuid::new_v4();
     let now = Utc::now();
     let sess = Session {
@@ -83,7 +83,7 @@ fn main() {
         .save_interaction(session_id, b"world!\n")
         .expect("save interaction fs 2");
 
-    // 2) Load and display interaction data from both backends
+    // Load and display interaction data from both backends
     let data_db = storage_db
         .get_session_data(session_id)
         .expect("get data db");
@@ -112,7 +112,7 @@ fn main() {
         text_path.display()
     );
 
-    // 3) Save some capture artifacts to both backends
+    // Save some capture artifacts to both backends
     let arts = CaptureArtifacts {
         session_id,
         tcp_client_to_container: vec![1, 2, 3],
@@ -132,7 +132,7 @@ fn main() {
         .save_capture_artifacts(&arts)
         .expect("save artifacts fs");
 
-    // 4) Load artifacts from both backends and display quick summary
+    // Load artifacts from both backends and display quick summary
     let fetched_db = storage_db
         .get_capture_artifacts(session_id)
         .expect("fetch artifacts db");
@@ -161,7 +161,7 @@ fn main() {
         fetched_db.total_bytes
     );
 
-    // 5) Query sessions (no cleanup) from both backends and display counts
+    // Query sessions from both backends and display counts
     let all_db = storage_db.get_sessions(None).expect("list sessions db");
     let all_fs = storage_fs.get_sessions(None).expect("list sessions fs");
     info!(
@@ -197,7 +197,7 @@ fn main() {
         );
     }
 
-    // Brief artifacts content preview (stdout as UTF-8 best-effort)
+    // Artifacts content preview
     let stdout_db = String::from_utf8_lossy(&fetched_db.stdio_stdout);
     let preview = stdout_db.chars().take(64).collect::<String>();
     info!(
