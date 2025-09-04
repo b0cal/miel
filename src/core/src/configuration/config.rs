@@ -1,7 +1,7 @@
 use super::types::*;
 use crate::error_handling::types::ConfigError;
 use clap::Parser;
-use log::{error, info};
+use log::{debug, error, info};
 use regex::Regex;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -165,15 +165,14 @@ impl Config {
     /// println!("Loaded {} services", config.services.len());
     /// ```
     pub fn from_file(path: &Path) -> Result<Self, ConfigError> {
+        debug!("Loading configuration from file: {}", path.display());
         let content = fs::read_to_string(path).map_err(ConfigError::IoError)?;
         let mut config: Config =
             toml::from_str(&content).map_err(|e| ConfigError::TomlError(e.to_string()))?;
 
         let service_path = env::var("SERVICE_DIR").unwrap_or_else(|_| "services".to_string());
         if Path::new(&service_path).exists() {
-            //TODO: might wanna remove this (we keep it because the services default are not
-            //currently in files but in the Config::default())
-            info!("Service configuration found in services/ directory");
+            debug!("Loading services from directory: {}", service_path);
             config.services.clear();
             for entry in fs::read_dir(&service_path).map_err(ConfigError::IoError)? {
                 let entry = entry.map_err(ConfigError::IoError)?;
@@ -183,17 +182,19 @@ impl Config {
                         fs::read_to_string(&path).map_err(ConfigError::IoError)?;
                     let service: ServiceConfig = toml::from_str(&service_content)
                         .map_err(|e| ConfigError::TomlError(e.to_string()))?;
-                    info!(
-                        "[+] New service {} on port {} imported",
-                        service.name, service.port
-                    );
+                    debug!("Loaded service: {} on port {}", service.name, service.port);
                     config.services.push(service);
                 }
             }
         } else {
+            debug!("Service directory not found, using default services");
             config.services = Config::default().services;
         }
 
+        info!(
+            "Configuration loaded successfully with {} services",
+            config.services.len()
+        );
         Ok(config)
     }
 

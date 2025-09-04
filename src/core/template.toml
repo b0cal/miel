@@ -1,5 +1,5 @@
 bind_address = "127.0.0.1"
-storage_path = "/var/lib/myapp"
+storage_path = "/var/lib/miel"
 storage_backend = "database"  # Options: "database" or "filesystem"
 web_ui_enabled = true
 web_ui_port = 3000
