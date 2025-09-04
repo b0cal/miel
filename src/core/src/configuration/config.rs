@@ -429,6 +429,7 @@ impl Config {
             services: vec![service],
             bind_address: "192.168.1.1".to_string(),
             storage_path: PathBuf::from("/etc"),
+            storage_backend: StorageBackend::Database,
             web_ui_port: 8080,
             web_ui_enabled: true,
             max_sessions: 100,
