@@ -1,26 +1,48 @@
 use crate::configuration::config::Config;
-use crate::error_handling::types::ControllerError;
+use crate::configuration::ServiceConfig;
+use crate::container_management::ContainerManager;
+use crate::error_handling::types::{ControllerError, SessionError};
 use crate::network::{network_listener::NetworkListener, types::SessionRequest};
+use crate::session_manager::SessionManager;
+use crate::storage::database_storage::DatabaseStorage;
+use crate::storage::storage_trait::Storage;
 use log::{error, info};
 use std::net::Ipv4Addr;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+
 pub struct Controller {
     // Fields for the Controller struct
     config: Config,
     listener: Option<NetworkListener>,
     session_rx: Option<mpsc::Receiver<SessionRequest>>,
+    storage: Arc<dyn Storage + Send + Sync>,
+    container_manager: Arc<tokio::sync::Mutex<ContainerManager>>,
+    session_manager: SessionManager,
     listener_handle: Option<JoinHandle<()>>,
 }
 
 impl Controller {
-    pub fn new(config: Config) -> Result<Self, ControllerError> {
+    pub async fn new(config: Config) -> Result<Self, ControllerError> {
+        let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new().unwrap()));
+        let storage: Arc<dyn Storage + Send + Sync> =
+            Arc::new(DatabaseStorage::new().await.unwrap());
+        let session_manager = SessionManager::new(
+            container_manager.clone(),
+            storage.clone(),
+            config.max_sessions,
+        );
+
         Ok(Self {
             config,
             listener: None,
             session_rx: None,
             listener_handle: None,
+            container_manager,
+            session_manager,
+            storage,
         })
     }
 
@@ -61,8 +83,9 @@ impl Controller {
                 session_request = self.session_rx.as_mut().unwrap().recv() => {
                     match session_request {
                         Some(request) => {
-                            info!("Session request received from {}", request.client_addr);
-                            info!("Service detected as: {:?}", request.service_name);
+                            if let Err(e) = self.handle_session_request(request).await {
+                                error!("Session handling failed: {:?}", e);
+                            }
                         }
                         None => {
                             info!("Session channel closed, stopping controller");
@@ -85,6 +108,11 @@ impl Controller {
 
     pub async fn shutdown(&mut self) -> Result<(), ControllerError> {
         info!("Starting Controller shutdown...");
+
+        // First, shutdown all active sessions and save them to database
+        if let Err(e) = self.session_manager.shutdown_all_sessions().await {
+            error!("Failed to shutdown sessions gracefully: {:?}", e);
+        }
 
         if let Some(listener) = &mut self.listener {
             if let Err(e) = listener.shutdown().await {
@@ -113,13 +141,143 @@ impl Controller {
         info!("Controller shutdown completed");
         Ok(())
     }
+
+    async fn handle_session_request(
+        &mut self,
+        request: SessionRequest,
+    ) -> Result<(), SessionError> {
+        info!("Session request received from {}", request.client_addr);
+        info!("Service detected as: {:?}", request.service_name);
+
+        // Clone the config to avoid holding a reference to self
+        let service = self
+            .find_config_for_service(&request.service_name)
+            .cloned()
+            .unwrap();
+
+        // Handle the session and trigger capture lifecycle
+        self.session_manager
+            .handle_session(request, &service)
+            .await?;
+
+        info!("Session handling completed with capture lifecycle initialized");
+        Ok(())
+    }
+
+    /// Manually trigger capture finalization for a specific session
+    pub async fn finalize_session_capture(
+        &mut self,
+        session_id: &uuid::Uuid,
+    ) -> Result<(), SessionError> {
+        self.session_manager
+            .finalize_session_capture(session_id)
+            .await
+    }
+
+    /// Manually end a session and finalize its capture
+    pub async fn end_session(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+        self.session_manager.end_session(session_id).await
+    }
+
+    /// Get session statistics including capture information
+    pub fn get_session_stats(
+        &self,
+        session_id: &uuid::Uuid,
+    ) -> Option<(crate::SessionStatus, u64, chrono::Duration)> {
+        self.session_manager.get_session_stats(session_id)
+    }
+
+    /// Trigger stdio capture for a specific session
+    pub async fn trigger_stdio_capture(
+        &mut self,
+        session_id: &uuid::Uuid,
+    ) -> Result<(), SessionError> {
+        self.session_manager.trigger_stdio_capture(session_id).await
+    }
+
+    /// Called when a connection drops or times out to ensure proper capture finalization
+    pub async fn on_session_end(&mut self, session_id: &uuid::Uuid) -> Result<(), SessionError> {
+        info!("Finalizing session {} due to connection end", session_id);
+        self.finalize_session_capture(session_id).await
+    }
+
+    /// Called periodically to clean up expired sessions and finalize their captures
+    pub async fn cleanup_and_finalize_expired_sessions(&mut self) -> Result<(), SessionError> {
+        info!("Running periodic session cleanup and capture finalization");
+        self.cleanup_expired_sessions().await
+    }
+
+    /// Get access to the storage backend for direct database operations
+    pub fn get_storage(&self) -> Arc<dyn Storage + Send + Sync> {
+        self.storage.clone()
+    }
+
+    /// Get access to the container manager for direct container operations
+    pub fn get_container_manager(&self) -> Arc<tokio::sync::Mutex<ContainerManager>> {
+        self.container_manager.clone()
+    }
+
+    /// Get all sessions using optional filtering
+    pub fn get_sessions(
+        &self,
+        filter: Option<crate::storage::types::SessionFilter>,
+    ) -> Result<Vec<crate::session::Session>, crate::error_handling::types::StorageError> {
+        self.storage.get_sessions(filter)
+    }
+
+    /// Cleanup expired sessions manually
+    pub async fn cleanup_expired_sessions(&mut self) -> Result<(), SessionError> {
+        self.session_manager.cleanup_expired_sessions().await;
+        Ok(())
+    }
+
+    fn find_config_for_service(&self, service_name: &str) -> Option<&ServiceConfig> {
+        self.config.services.iter().find(|s| s.name == service_name)
+    }
+
+    #[cfg(test)]
+    async fn new_for_test(config: Config) -> Result<Self, ControllerError> {
+        use crate::storage::file_storage::FileStorage;
+        use tempfile::TempDir;
+
+        // Create a temporary directory for test storage
+        let temp_dir = TempDir::new().map_err(|_| {
+            ControllerError::Storage(crate::error_handling::types::StorageError::WriteFailed)
+        })?;
+        let temp_path = temp_dir.path().to_path_buf();
+        // Leak the temp dir to keep it alive for the test duration
+        std::mem::forget(temp_dir);
+
+        // Use file storage for tests to avoid database complexity
+        let storage: Arc<dyn Storage + Send + Sync> =
+            Arc::new(FileStorage::new(temp_path).map_err(|e| ControllerError::Storage(e))?);
+
+        // Create a mock container manager that doesn't require root privileges
+        let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new_mock()));
+
+        let session_manager = SessionManager::new(
+            container_manager.clone(),
+            storage.clone(),
+            config.max_sessions,
+        );
+
+        Ok(Self {
+            config,
+            listener: None,
+            session_rx: None,
+            listener_handle: None,
+            container_manager,
+            session_manager,
+            storage,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::configuration::config::Config;
-    use crate::configuration::types::{Protocol, ServiceConfig};
+    use crate::configuration::types::Protocol;
     use log::debug;
     use std::time::Duration;
     use tokio::io::AsyncReadExt;
@@ -221,7 +379,7 @@ mod tests {
             port
         );
 
-        let mut controller = Controller::new(config).unwrap();
+        let mut controller = Controller::new_for_test(config).await.unwrap();
         debug!("Controller initialized");
 
         debug!("Starting controller...");

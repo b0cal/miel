@@ -332,7 +332,7 @@ impl Default for Config {
             services: vec![
                 ServiceConfig {
                     name: "ssh".to_string(),
-                    port: 22,
+                    port: 2222,
                     protocol: Protocol::TCP,
                     container_image: "ssh-container".to_string(),
                     enabled: true,
@@ -341,7 +341,7 @@ impl Default for Config {
                 },
                 ServiceConfig {
                     name: "http".to_string(),
-                    port: 80,
+                    port: 8080,
                     protocol: Protocol::TCP,
                     container_image: "http-container".to_string(),
                     enabled: true,
@@ -352,7 +352,7 @@ impl Default for Config {
             bind_address: "0.0.0.0".to_string(),
             storage_path: PathBuf::from("/var/lib/miel"),
             web_ui_enabled: false,
-            web_ui_port: 8080,
+            web_ui_port: 3000,
             max_sessions: 100,
             session_timeout_secs: 3600,
             ip_filter: IpFilter::default(),
@@ -804,7 +804,7 @@ mod tests_from_file {
 
         assert_eq!(config.bind_address, "10.0.0.5");
         assert!(!config.web_ui_enabled); // from default
-        assert_eq!(config.web_ui_port, 8080); // from default
+        assert_eq!(config.web_ui_port, 3000); // from default
         assert_eq!(config.max_sessions, 100); // from default
         assert_eq!(config.session_timeout_secs, 3600);
         assert_eq!(config.ip_filter, IpFilter::default());

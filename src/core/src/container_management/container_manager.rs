@@ -24,6 +24,7 @@ use crate::error_handling::types::ContainerError;
 /// - A random ephemeral host port is allocated and mapped to the container's
 ///   internal service port.
 /// - This is a minimal, best-effort implementation not meant for production isolation.
+#[derive(Clone)]
 pub struct ContainerManager {
     runtime: Runtime,
     active_containers: HashMap<String, ContainerHandle>,
@@ -67,6 +68,23 @@ impl ContainerManager {
             manager.runtime
         );
         Ok(manager)
+    }
+
+    /// Creates a mock `ContainerManager` for testing that doesn't require root privileges.
+    #[cfg(test)]
+    pub fn new_mock() -> Self {
+        use log::debug;
+        debug!("Creating mock ContainerManager for testing");
+
+        ContainerManager {
+            runtime: Runtime::SystemdNspawn,
+            active_containers: HashMap::new(),
+            stats: ContainerStats {
+                active_count: 0,
+                total_created: 0,
+                failed_count: 0,
+            },
+        }
     }
 
     /// Best-effort check for root privileges (EUID == 0).
