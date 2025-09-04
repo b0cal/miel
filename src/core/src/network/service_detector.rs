@@ -1,7 +1,7 @@
 use super::types::ServicePattern;
 use crate::configuration::types::ServiceConfig;
 use crate::error_handling::types::NetworkError;
-use log::{error, info};
+use log::{debug, error};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use tokio::io::AsyncReadExt;
@@ -36,37 +36,37 @@ impl ServiceDetector {
 
     pub async fn identify_service(&self, stream: &mut TcpStream) -> Result<String, NetworkError> {
         let local_addr: SocketAddr = stream.local_addr().map_err(|e| {
-            error!("Failed to get local_addr: {}", e);
+            error!("Failed to get local address: {}", e);
             NetworkError::ServiceDetectionFailed
         })?;
         let port = local_addr.port();
 
-        log::debug!("Local address port is {}", port);
+        debug!("Identifying service on port {}", port);
 
         if let Some(service) = self.detect_from_port(port) {
-            log::debug!("Service {} detected from port", service);
+            debug!("Service '{}' detected from port {}", service, port);
             return Ok(service);
         }
 
-        info!(
-            "No service detected from the port {}, checking with payload...",
+        debug!(
+            "No service detected from port {}, checking payload...",
             port
         );
 
         let mut buf = [0u8; 1024];
         let n = stream.read(&mut buf).await.map_err(|e| {
-            error!("failed to read from stream: {}", e);
+            error!("Failed to read from stream: {}", e);
             NetworkError::ServiceDetectionFailed
         })?;
 
         if n > 0 {
             if let Some(service) = self.detect_from_payload(&buf[..n]) {
-                log::debug!("Service {} detected from payload", service);
+                debug!("Service '{}' detected from payload", service);
                 return Ok(service);
             }
         }
 
-        info!("No service detected from port {} or payload", port);
+        debug!("No service detected from port {} or payload", port);
         Err(NetworkError::ServiceDetectionFailed)
     }
 

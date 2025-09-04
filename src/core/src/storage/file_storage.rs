@@ -60,7 +60,7 @@ impl FileStorage {
 
         fs::create_dir_all(&sessions_dir).map_err(|e| {
             error!(
-                "Failed to create sessions dir {}: {}",
+                "Failed to create sessions directory {}: {}",
                 sessions_dir.display(),
                 e
             );
@@ -68,7 +68,7 @@ impl FileStorage {
         })?;
         fs::create_dir_all(&interactions_dir).map_err(|e| {
             error!(
-                "Failed to create interactions dir {}: {}",
+                "Failed to create interactions directory {}: {}",
                 interactions_dir.display(),
                 e
             );
@@ -76,13 +76,14 @@ impl FileStorage {
         })?;
         fs::create_dir_all(&artifacts_path).map_err(|e| {
             error!(
-                "Failed to create artifacts dir {}: {}",
+                "Failed to create artifacts directory {}: {}",
                 artifacts_path.display(),
                 e
             );
             StorageError::WriteFailed
         })?;
-        info!("FileStorage initialized");
+
+        debug!("File storage initialized at: {}", base_path.display());
 
         Ok(Self {
             base_path,
@@ -95,10 +96,7 @@ impl FileStorage {
     /// This method should be used when creating storage from application configuration.
     pub fn from_config_path<P: AsRef<Path>>(storage_path: P) -> Result<Self, StorageError> {
         let base_path = storage_path.as_ref().join("file_storage");
-        info!(
-            "Using FileStorage from configured storage path: {}",
-            base_path.display()
-        );
+        debug!("Initializing file storage at: {}", base_path.display());
         Self::new(base_path)
     }
 
@@ -110,19 +108,19 @@ impl FileStorage {
     pub fn new_default() -> Result<Self, StorageError> {
         if let Ok(storage_dir) = std::env::var("MIEL_STORAGE_PATH") {
             let base_path = std::path::PathBuf::from(storage_dir).join("file_storage");
-            info!(
-                "Using FileStorage from MIEL_STORAGE_PATH environment variable: {}",
+            debug!(
+                "Using file storage from MIEL_STORAGE_PATH: {}",
                 base_path.display()
             );
             return Self::new(base_path);
         }
         let cwd = std::env::current_dir().map_err(|e| {
-            error!("Failed to get current dir: {}", e);
+            error!("Failed to determine current directory: {}", e);
             StorageError::ReadFailed
         })?;
         let base_path = cwd.join("file_storage");
-        info!(
-            "Using FileStorage at current directory: {}",
+        debug!(
+            "Using file storage in current directory: {}",
             base_path.display()
         );
         Self::new(base_path)
@@ -210,7 +208,7 @@ impl FileStorage {
         if let Ok(mut idx) = self.session_index.lock() {
             idx.insert(session.id, path.clone());
         }
-        info!("Saved a session file");
+        debug!("Session data saved successfully");
         Ok(())
     }
 
@@ -304,7 +302,7 @@ impl FileStorage {
             "Completed" => crate::session_management::SessionStatus::Completed,
             _ => crate::session_management::SessionStatus::Error,
         };
-        debug!("Parsed a session file");
+        debug!("Session data parsed successfully");
         Ok(Session {
             id,
             service_name,
@@ -376,7 +374,7 @@ impl Storage for FileStorage {
             });
         }
         debug!(
-            "Loaded {} session(s), {} after filter",
+            "Retrieved {} sessions ({} after filtering)",
             original_len,
             sessions.len()
         );
@@ -397,7 +395,7 @@ impl Storage for FileStorage {
             error!("Write failed {}: {}", sanitize_path(&path), e);
             StorageError::WriteFailed
         })?;
-        debug!("Appended {} byte(s) to an interactions file", data.len());
+        debug!("Interaction data appended ({} bytes)", data.len());
         Ok(())
     }
 
@@ -410,7 +408,7 @@ impl Storage for FileStorage {
                 error!("Read failed {}: {}", sanitize_path(&path), e);
                 StorageError::ReadFailed
             })?;
-        debug!("Read {} byte(s) from an interactions file", buf.len());
+        debug!("Retrieved session data ({} bytes)", buf.len());
         Ok(buf)
     }
 
@@ -439,7 +437,7 @@ impl Storage for FileStorage {
                 }
             }
         }
-        info!("Removed {} old session(s)", removed);
+        info!("Cleaned up {} expired sessions", removed);
         Ok(removed)
     }
 
@@ -619,7 +617,7 @@ impl Storage for FileStorage {
             );
             StorageError::WriteFailed
         })?;
-        info!("Saved artifacts for a session");
+        debug!("Session artifacts saved successfully");
         Ok(())
     }
 
@@ -735,7 +733,7 @@ impl Storage for FileStorage {
             }
         }
         let duration = chrono::Duration::seconds(duration_secs);
-        info!("Loaded artifacts for a session");
+        debug!("Session artifacts parsed successfully");
 
         Ok(CaptureArtifacts {
             session_id,

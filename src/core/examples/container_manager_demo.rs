@@ -10,9 +10,8 @@ use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
-        .init();
+    // Respect RUST_LOG environment variable instead of hardcoding log level
+    env_logger::Builder::from_default_env().init();
 
     info!("Starting container manager demo");
 

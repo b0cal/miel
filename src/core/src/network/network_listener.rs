@@ -63,7 +63,7 @@ use crate::configuration::types::ServiceConfig;
 use crate::error_handling::types::NetworkError;
 
 use chrono::Utc;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
@@ -179,45 +179,6 @@ impl NetworkListener {
     /// This method creates and configures TCP sockets for each service, storing them in the
     /// internal listeners map. It also initializes the service detector with the provided service
     /// configurations
-    ///
-    /// # Arguments
-    ///
-    /// * `services` - A slice of service configurations containing port and protocol information
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` if all services were successfully bound
-    /// * `Err(NetworkError::SockError)` if any socket creation fails
-    ///
-    /// # Error
-    ///
-    /// This function will return an error if:
-    /// - TCP socket creation fails for any of the specified ports
-    /// - The system runs out of available file descriptors
-    /// - Permission is denied for binding to privileged ports (< 1024)
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use tokio::sync::mpsc;
-    /// use miel::configuration::types::ServiceConfig;
-    /// use miel::network::network_listener::NetworkListener;
-    ///
-    /// let (tx, rx) = mpsc::channel(100);
-    ///
-    /// let bind_addr = std::net::SocketAddr::from(([0, 0, 0, 0], 0));
-    /// let mut listener = NetworkListener::new(tx);
-    ///
-    /// let services = vec![
-    ///     ServiceConfig { port: 8080, ..Default::default() },
-    ///     ServiceConfig { port: 8443, ..Default::default() }
-    /// ];
-    ///
-    /// match listener.bind_services(&services) {
-    ///     Ok(()) => println!("All services bound successfully"),
-    ///     Err(e) => eprintln!("Failed to bind services: {:?}", e),
-    /// }
-    /// ```
     pub fn bind_services(&mut self, services: &[ServiceConfig]) -> Result<(), NetworkError> {
         self.service_detector = ServiceDetector::new(services);
 
@@ -227,13 +188,14 @@ impl NetworkListener {
             let socket = match TcpSocket::new_v4() {
                 Ok(sock) => sock,
                 Err(err) => {
-                    error!("[!] Socket error: {:?}", err);
+                    error!("Failed to create TCP socket for port {}: {}", s.port, err);
                     return Err(NetworkError::SockError(err));
                 }
             };
             self.listeners.insert(s.port, socket);
         }
 
+        debug!("Service bindings configured for {} ports", services.len());
         Ok(())
     }
 
@@ -287,29 +249,28 @@ impl NetworkListener {
     pub async fn start_listening(mut copy: Self, bind_addr: Ipv4Addr) -> Result<(), NetworkError> {
         let mut listener_handles = Vec::new();
 
-        info!("=== Service listeners configuration ===");
+        info!("Starting network listeners on {}", bind_addr);
+
         // Bind all sockets and create listeners
         for (port, socket) in copy.listeners.drain() {
-            info!("Binding socket to address {} with port {}", bind_addr, port);
+            debug!("Binding service listener to {}:{}", bind_addr, port);
 
             // Bind socket to the bind_address with port specified in the ServiceConfig
             if let Err(e) = socket.bind(SocketAddr::new(IpAddr::V4(bind_addr), port)) {
-                error!("[!] Failed to bind to port {}: {:?}", port, e);
+                error!("Failed to bind to port {}: {}", port, e);
                 return Err(NetworkError::BindError(e));
             }
 
-            info!("Binding successful!");
-
             // Convert to listener
             let listener = match socket.listen(1024) {
-                // backlog value should
-                // correspond to max_connection from controller
                 Ok(listener) => listener,
                 Err(e) => {
-                    error!("[!] Failed to listen on port {}: {:?}", port, e);
+                    error!("Failed to listen on port {}: {}", port, e);
                     return Err(NetworkError::BindError(e));
                 }
             };
+
+            debug!("Service listener bound to port {}", port);
 
             // Clone components used for the async listening session
             let session_tx_clone = copy.session_tx.clone();
@@ -332,9 +293,14 @@ impl NetworkListener {
             listener_handles.push(handle);
         }
 
+        info!(
+            "Network listeners started on {} ports",
+            listener_handles.len()
+        );
+
         for handle in listener_handles {
             if let Err(e) = handle.await {
-                error!("Listener task panicked: {:?}", e);
+                error!("Network listener task failed: {}", e);
             }
         }
 
@@ -349,26 +315,26 @@ impl NetworkListener {
         port: u16,
         mut shutdown_rx: broadcast::Receiver<()>,
     ) {
-        info!("Now listening on port {}", port);
+        debug!("Network listener active on port {}", port);
 
         loop {
             tokio::select! {
-                //Accept incomming connection
+                //Accept incoming connection
                 accept_result = listener.accept() => {
                     let (stream, client_addr) = match accept_result {
                         Ok((stream, addr)) => {
-                            info!("[+] New connection accepted! from address {}", addr);
+                            debug!("Connection received from {} on port {}", addr, port);
                             (stream, addr)
                         }
                         Err(e) => {
-                            error!("[!] Failed to accept connection on port {}: {:?}", port, e);
+                            error!("Failed to accept connection on port {}: {}", port, e);
                             continue;
                         }
                     };
 
                     // Check if connection should be accepted
                     if !connection_filter.should_accept_connection(&client_addr.ip(), port) {
-                        warn!("[!] Connection from {} rejected by filter", client_addr);
+                        debug!("Connection from {} on port {} rejected by filter", client_addr, port);
                         continue;
                     }
 
@@ -385,33 +351,29 @@ impl NetworkListener {
                         )
                         .await
                         {
-                            error!(
-                                "[!] Error handling connection from {}: {:?}",
-                                client_addr, e
-                            );
+                            error!("Failed to handle connection from {}: {}", client_addr, e);
                         }
                     });
                 }
 
                 _ = shutdown_rx.recv() => {
-                        info!("Shutdown signal received for port {}", port);
-                        break;
-                    }
-
+                    debug!("Shutdown signal received for port {}", port);
+                    break;
+                }
             }
         }
 
-        info!("Port {} listener shut down cleanly", port);
+        debug!("Network listener on port {} stopped", port);
     }
 
     pub async fn shutdown(&mut self) -> Result<(), NetworkError> {
-        info!("Starting NetworkListener shutdown...");
+        debug!("Initiating network listener shutdown");
 
         if let Some(shutdown_tx) = &self.shutdown_tx {
             if shutdown_tx.send(()).is_err() {
-                warn!("No active listeners to shut down");
+                debug!("No active listeners found during shutdown");
             } else {
-                info!("Shutdown signal sent to all listeners");
+                debug!("Shutdown signal sent to all listeners");
             }
         }
 
@@ -422,32 +384,30 @@ impl NetworkListener {
             shutdown_tasks.push(handle);
         }
 
-        info!(
-            "Waiting for {} listeners to shut down ...",
-            shutdown_tasks.len()
-        );
+        if !shutdown_tasks.is_empty() {
+            debug!(
+                "Waiting for {} listeners to shut down",
+                shutdown_tasks.len()
+            );
 
-        for (i, handle) in shutdown_tasks.into_iter().enumerate() {
-            match tokio::time::timeout(timeout_duration, handle).await {
-                Ok(Ok(())) => {
-                    info!("Listener {} shut down successfully", i + 1);
-                }
-                Ok(Err(e)) => {
-                    error!("Listener {} panicked during shutdown: {:?}", i + 1, e);
-                }
-                Err(_) => {
-                    error!(
-                        "Listener {} shutdown timed out after {:?}",
-                        i + 1,
-                        timeout_duration
-                    );
+            for (i, handle) in shutdown_tasks.into_iter().enumerate() {
+                match tokio::time::timeout(timeout_duration, handle).await {
+                    Ok(Ok(())) => {
+                        debug!("Listener {} shutdown completed", i + 1);
+                    }
+                    Ok(Err(e)) => {
+                        error!("Listener {} failed during shutdown: {}", i + 1, e);
+                    }
+                    Err(_) => {
+                        error!("Listener {} shutdown timed out", i + 1);
+                    }
                 }
             }
         }
 
         // Clear the shutdown channel
         self.shutdown_tx = None;
-        info!("NetworkListener shutdown completed");
+        info!("Network listener shutdown completed");
         Ok(())
     }
 
@@ -457,21 +417,20 @@ impl NetworkListener {
         session_tx: Sender<SessionRequest>,
         service_detector: ServiceDetector,
     ) -> Result<(), NetworkError> {
-        log::debug!("Identifying service from port {}", client_addr.port());
+        debug!("Identifying service for connection from {}", client_addr);
         let service_name = match service_detector.identify_service(&mut stream).await {
             Ok(name) => name,
             Err(e) => {
-                log::warn!(
-                    "[!] Failed to detect service for connection from {}: {:?}",
-                    client_addr,
-                    e
+                warn!(
+                    "Failed to detect service for connection from {}: {}",
+                    client_addr, e
                 );
                 return Err(e);
             }
         };
 
-        info!(
-            "[+] Detected sevice '{:?}' for connection from {}",
+        debug!(
+            "Detected service '{}' for connection from {}",
             service_name, client_addr
         );
 
@@ -483,13 +442,12 @@ impl NetworkListener {
             timestamp: Utc::now(),
         };
 
-        if (session_tx.send(session_request).await).is_err() {
+        if session_tx.send(session_request).await.is_err() {
             error!("Failed to send session request - channel may be closed");
             return Err(NetworkError::ChannelFailed);
         }
 
-        info!("[+] Session request sent successfully for {}", client_addr);
-
+        debug!("Session request sent for {}", client_addr);
         Ok(())
     }
 }
