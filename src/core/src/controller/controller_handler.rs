@@ -51,7 +51,9 @@ impl Controller {
 
         if config.web_ui_enabled {
             let ws = WebServer::new(storage.clone());
-            let _ = ws.start(config.web_ui_port).await;
+            tokio::spawn(async move {
+                let _ = ws.start(config.web_ui_port).await;
+            });
         }
 
         let session_manager = SessionManager::new(
@@ -275,7 +277,7 @@ impl Controller {
 
         // Use file storage for tests to avoid database complexity
         let storage: Arc<dyn Storage + Send + Sync> =
-            Arc::new(FileStorage::new(temp_path).map_err(|e| ControllerError::Storage(e))?);
+            Arc::new(FileStorage::new(temp_path).map_err(ControllerError::Storage)?);
 
         // Create a mock container manager that doesn't require root privileges
         let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new_mock()));

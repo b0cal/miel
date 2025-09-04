@@ -1,8 +1,7 @@
 use std::net::SocketAddr;
-use std::panic;
 use std::sync::Arc;
 
-use log::{error, info};
+use log::info;
 
 use super::routes::*;
 use crate::error_handling::types::WebError;
