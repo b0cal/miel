@@ -36,14 +36,14 @@ impl Controller {
                 Arc::new(
                     DatabaseStorage::from_config_path(&config.storage_path)
                         .await
-                        .map_err(ControllerError::Storage)?
+                        .map_err(ControllerError::Storage)?,
                 )
             }
             StorageBackend::FileSystem => {
                 info!("Initializing FileSystem storage backend");
                 Arc::new(
                     FileStorage::from_config_path(&config.storage_path)
-                        .map_err(ControllerError::Storage)?
+                        .map_err(ControllerError::Storage)?,
                 )
             }
         };
