@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  
+  code {
+    font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  }
+}
+  
+  body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f3f4f6;
+  }
+
+  code {
+    font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  }
+}
+
+/* Component layer for reusable component classes */
+@layer components {
+  .dashboard-card {
+    @apply bg-black text-white rounded-lg shadow-lg;
+  }
+  
+  .dashboard-button {
+    @apply bg-gray-700 hover:bg-gray-800 text-white font-medium py-2 px-4 rounded transition-colors duration-200;
+  }
+  
+  .metric-card {
+    @apply bg-black p-3 rounded text-center hover:bg-gray-800 transition-colors cursor-pointer;
+  }
+  
+  .threat-row {
+    @apply flex justify-between text-sm py-1 hover:bg-gray-800 px-2 rounded transition-colors;
+  }
+}
+
+/* Utility layer for custom utilities */
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0,0,0,0.10);
+  }
+  
+  .text-shadow-lg {
+    text-shadow: 0 15px 30px rgba(0,0,0,0.15);
+  }
+  
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #374151 #1f2937;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: #252a33;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #121212;
+    border-radius: 3px;
+  }
+}
