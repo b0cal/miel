@@ -30,11 +30,12 @@ pub enum SessionStatus {
 impl PartialEq for &SessionStatus {
     /// Custom equality check for SessionStatus references.
     fn eq(&self, other: &Self) -> bool {
-        matches!((self, other),
-            (SessionStatus::Pending, SessionStatus::Pending) |
-            (SessionStatus::Active, SessionStatus::Active) |
-            (SessionStatus::Completed, SessionStatus::Completed) |
-            (SessionStatus::Error, SessionStatus::Error)
+        matches!(
+            (self, other),
+            (SessionStatus::Pending, SessionStatus::Pending)
+                | (SessionStatus::Active, SessionStatus::Active)
+                | (SessionStatus::Completed, SessionStatus::Completed)
+                | (SessionStatus::Error, SessionStatus::Error)
         )
     }
 }

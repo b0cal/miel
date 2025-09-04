@@ -1,26 +1,47 @@
 use crate::configuration::config::Config;
-use crate::error_handling::types::ControllerError;
+use crate::configuration::ServiceConfig;
+use crate::container_management::ContainerManager;
+use crate::error_handling::types::{ControllerError, SessionError};
 use crate::network::{network_listener::NetworkListener, types::SessionRequest};
+use crate::session_manager::SessionManager;
+use crate::storage::database_storage::DatabaseStorage;
+use crate::storage::storage_trait::Storage;
 use log::{error, info};
 use std::net::Ipv4Addr;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+
 pub struct Controller {
     // Fields for the Controller struct
     config: Config,
     listener: Option<NetworkListener>,
     session_rx: Option<mpsc::Receiver<SessionRequest>>,
+    storage: Arc<dyn Storage + Send + Sync>,
+    container_manager: ContainerManager,
+    session_manager: SessionManager,
     listener_handle: Option<JoinHandle<()>>,
 }
 
 impl Controller {
     pub fn new(config: Config) -> Result<Self, ControllerError> {
+        let container_manager = ContainerManager::new().unwrap();
+        let storage: Arc<dyn Storage + Send + Sync> = Arc::new(DatabaseStorage::new().unwrap());
+        let session_manager = SessionManager::new(
+            Arc::new(tokio::sync::Mutex::new(container_manager.clone())),
+            storage.clone(),
+            config.max_sessions,
+        );
+
         Ok(Self {
             config,
             listener: None,
             session_rx: None,
             listener_handle: None,
+            container_manager,
+            session_manager,
+            storage,
         })
     }
 
@@ -61,8 +82,9 @@ impl Controller {
                 session_request = self.session_rx.as_mut().unwrap().recv() => {
                     match session_request {
                         Some(request) => {
-                            info!("Session request received from {}", request.client_addr);
-                            info!("Service detected as: {:?}", request.service_name);
+                            if let Err(e) = self.handle_session_request(request).await {
+                                error!("Session handling failed: {:?}", e);
+                            }
                         }
                         None => {
                             info!("Session channel closed, stopping controller");
@@ -113,13 +135,30 @@ impl Controller {
         info!("Controller shutdown completed");
         Ok(())
     }
+
+    async fn handle_session_request(&mut self, request: SessionRequest) -> Result<(), SessionError> {
+        info!("Session request received from {}", request.client_addr);
+        info!("Service detected as: {:?}", request.service_name);
+
+        // Clone the config to avoid holding a reference to self
+        let service = self.find_config_for_service(&request.service_name)
+            .cloned()
+            .unwrap();
+
+        self.session_manager.handle_session(request, &service).await?;
+        Ok(())
+    }
+
+    fn find_config_for_service(&self, service_name: &str) -> Option<&ServiceConfig> {
+        self.config.services.iter().find(|s| s.name == service_name)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::configuration::config::Config;
-    use crate::configuration::types::{Protocol, ServiceConfig};
+    use crate::configuration::types::Protocol;
     use log::debug;
     use std::time::Duration;
     use tokio::io::AsyncReadExt;

@@ -24,4 +24,3 @@ impl SessionRequest {
         self.stream.take()
     }
 }
-

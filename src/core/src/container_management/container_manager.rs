@@ -24,6 +24,7 @@ use crate::error_handling::types::ContainerError;
 /// - A random ephemeral host port is allocated and mapped to the container's
 ///   internal service port.
 /// - This is a minimal, best-effort implementation not meant for production isolation.
+#[derive(Clone)]
 pub struct ContainerManager {
     runtime: Runtime,
     active_containers: HashMap<String, ContainerHandle>,

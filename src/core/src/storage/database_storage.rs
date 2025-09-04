@@ -17,13 +17,14 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::data_capture::CaptureArtifacts;
 use crate::error_handling::types::StorageError;
+use crate::session::Session;
 use crate::storage::db_entities as session;
 use crate::storage::db_entities::artifacts as art;
 use crate::storage::db_entities::interactions as inter;
 use crate::storage::storage_trait::Storage;
-use crate::storage::types::{CaptureArtifacts, SessionFilter};
-use crate::session::Session;
+use crate::storage::types::SessionFilter;
 
 /// Storage backend that uses SQLite via SeaORM.
 ///

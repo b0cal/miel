@@ -49,9 +49,8 @@ use tokio::net::TcpStream;
 use uuid::Uuid;
 
 use crate::error_handling::types::CaptureError;
-
+use crate::storage::storage_trait::Storage;
 use super::stdio_capture::StdioCapture;
-use super::storage::Storage;
 use super::tcp_capture::TcpCapture;
 use super::types::CaptureArtifacts;
 
@@ -77,7 +76,7 @@ pub struct StreamRecorder {
     /// Optional stdio/PTY snapshotter for the current session.
     stdio_capture: Option<Arc<StdioCapture>>,
     /// Pluggable persistence backend.
-    storage: Arc<dyn Storage>,
+    storage: Arc<dyn Storage + Send + Sync>,
     /// Session start wall‑clock time (UTC), used to compute duration.
     start_time: DateTime<Utc>,
 }
@@ -87,7 +86,7 @@ impl StreamRecorder {
     ///
     /// The recorder holds only lightweight buffers and references; it’s cheap to
     /// construct and clone the underlying `Arc` values as needed by your orchestration.
-    pub fn new(session_id: Uuid, storage: Arc<dyn Storage>) -> Self {
+    pub fn new(session_id: Uuid, storage: Arc<dyn Storage + Send + Sync>) -> Self {
         debug!("[{}] StreamRecorder created", session_id);
         Self {
             session_id,

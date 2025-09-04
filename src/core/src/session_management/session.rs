@@ -1,7 +1,7 @@
 use crate::SessionStatus;
 use chrono::{DateTime, Utc};
-use std::net::SocketAddr;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use uuid::Uuid;
 
 /// Represents a captured service session.

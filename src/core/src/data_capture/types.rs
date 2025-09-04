@@ -1,10 +1,11 @@
 //! Common data types used across the data_capture subsystem.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Direction of TCP flow for captured bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Direction {
     /// Bytes flowing from the external client to the container/service.
     ClientToContainer,
@@ -13,7 +14,7 @@ pub enum Direction {
 }
 
 /// Logical stdio stream identifiers when parsing activity logs or PTY snapshots.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StdioStream {
     /// Data written by the client (e.g., typed commands), i.e., STDIN.
     Stdin,
@@ -23,27 +24,30 @@ pub enum StdioStream {
     Stderr,
 }
 
-/// Aggregated artifacts for a session, combining TCP and stdio data with metadata.
-#[derive(Debug, Clone)]
+//// Aggregated capture artifacts persisted after a session completes.
+///
+/// Binary payloads are stored directly; timestamp series provide lightweight
+/// metadata usable for replay or analysis.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaptureArtifacts {
-    /// Unique session identifier.
+    /// The related session identifier
     pub session_id: Uuid,
-    /// Raw bytes sent from client to container over TCP.
+    /// Raw TCP payload captured from client to container
     pub tcp_client_to_container: Vec<u8>,
-    /// Raw bytes sent from container to client over TCP.
+    /// Raw TCP payload captured from container to client
     pub tcp_container_to_client: Vec<u8>,
-    /// Concatenated STDIN bytes recovered from logs/PTY (if available).
+    /// Raw stdin bytes
     pub stdio_stdin: Vec<u8>,
-    /// Concatenated STDOUT bytes recovered from logs/PTY (if available).
+    /// Raw stdout bytes
     pub stdio_stdout: Vec<u8>,
-    /// Concatenated STDERR bytes recovered from logs/PTY (if available).
+    /// Raw stderr bytes
     pub stdio_stderr: Vec<u8>,
-    /// Per-chunk TCP timestamps with direction and byte count.
+    /// Timestamped sizes for TCP chunks
     pub tcp_timestamps: Vec<(DateTime<Utc>, Direction, usize)>,
-    /// Per-line stdio timestamps with stream identifier and byte count.
+    /// Timestamped sizes for STDIO chunks
     pub stdio_timestamps: Vec<(DateTime<Utc>, StdioStream, usize)>,
-    /// Total captured byte count across all channels.
+    /// Total number of bytes captured across channels
     pub total_bytes: u64,
-    /// Wall-clock duration of the session.
-    pub duration: chrono::Duration,
+    /// Total capture duration
+    pub duration: Duration,
 }

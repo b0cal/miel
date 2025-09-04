@@ -2,14 +2,14 @@ use crate::active_session::ActiveSession;
 use crate::configuration::types::ServiceConfig;
 use crate::container_management::container_manager::ContainerManager;
 use crate::container_management::ContainerHandle;
-use crate::data_capture::Storage;
 use crate::data_capture::StreamRecorder;
 use crate::error_handling::types::SessionError;
 use crate::network::types::SessionRequest;
 use crate::session::Session;
+use crate::storage::storage_trait::Storage;
 use crate::SessionStatus;
 use chrono::Utc;
-use log::{debug, error};
+use log::error;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,7 +34,7 @@ pub struct SessionManager {
     // Fields for the SessionManager struct
     active_sessions: HashMap<Uuid, ActiveSession>,
     container_manager: Arc<Mutex<ContainerManager>>,
-    storage: Arc<dyn Storage>,
+    storage: Arc<dyn Storage + Send + Sync>,
     max_sessions: usize,
     session_timeout: Duration,
 }
@@ -42,7 +42,7 @@ pub struct SessionManager {
 impl SessionManager {
     pub fn new(
         container_manager: Arc<Mutex<ContainerManager>>,
-        storage: Arc<dyn Storage>,
+        storage: Arc<dyn Storage + Send + Sync>,
         max_sessions: usize,
     ) -> Self {
         Self {
