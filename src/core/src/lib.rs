@@ -14,6 +14,8 @@ pub mod error_handling;
 
 pub mod storage;
 
+pub mod web_interface;
+
 pub use controller::*;
 
 pub use session_management::*;
