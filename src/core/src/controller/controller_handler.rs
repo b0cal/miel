@@ -27,8 +27,21 @@ pub struct Controller {
 impl Controller {
     pub async fn new(config: Config) -> Result<Self, ControllerError> {
         let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new().unwrap()));
-        let storage: Arc<dyn Storage + Send + Sync> =
-            Arc::new(DatabaseStorage::new().await.unwrap());
+
+        // Use environment variable if set, otherwise use configured storage path
+        let storage: Arc<dyn Storage + Send + Sync> = if std::env::var("MIEL_STORAGE_PATH").is_ok()
+        {
+            info!("Using MIEL_STORAGE_PATH environment variable for storage location");
+            Arc::new(DatabaseStorage::new().await.unwrap())
+        } else {
+            info!("Using configured storage_path for storage location");
+            Arc::new(
+                DatabaseStorage::from_config_path(&config.storage_path)
+                    .await
+                    .unwrap(),
+            )
+        };
+
         let session_manager = SessionManager::new(
             container_manager.clone(),
             storage.clone(),

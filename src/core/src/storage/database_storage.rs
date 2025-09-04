@@ -1,7 +1,7 @@
 //! SQLite-backed storage implementation using SeaORM.
 //!
 //! This backend persists sessions, interactions, and capture artifacts to a
-//! local SQLite database. It honors the `MIEL_DB_PATH` environment variable
+//! local SQLite database. It honors the `MIEL_STORAGE_PATH` environment variable
 //! to select the database file location, otherwise defaults to `./miel.sqlite3`.
 
 use std::env;
@@ -28,7 +28,7 @@ use crate::storage::types::SessionFilter;
 
 /// Storage backend that uses SQLite via SeaORM.
 ///
-/// Construct with [`DatabaseStorage::new`] to respect `MIEL_DB_PATH` or
+/// Construct with [`DatabaseStorage::new`] to respect `MIEL_STORAGE_PATH` or
 /// [`DatabaseStorage::new_file`] for an explicit database path.
 pub struct DatabaseStorage {
     conn: DatabaseConnection,
@@ -38,22 +38,37 @@ impl DatabaseStorage {
     /// Default database filename used in the application's working directory
     const DEFAULT_DB_FILE: &'static str = "miel.sqlite3";
 
-    /// Create or open the database using an env override if provided, otherwise in the current working directory
+    /// Create or open the database using the configured storage path.
+    /// This method should be used when creating storage from application configuration.
+    pub async fn from_config_path<P: AsRef<Path>>(storage_path: P) -> Result<Self, StorageError> {
+        let db_path = storage_path.as_ref().join(Self::DEFAULT_DB_FILE);
+        info!(
+            "Using DatabaseStorage from configured storage path: {}",
+            db_path.display()
+        );
+        Self::new_file(db_path).await
+    }
+
+    /// Create or open the database using `MIEL_STORAGE_PATH` if set, otherwise in the current working directory
+    ///
+    /// This method respects the `MIEL_STORAGE_PATH` environment variable for both configuration
+    /// and environment-based deployments. The database file will be placed directly in the
+    /// specified storage path.
     pub async fn new() -> Result<Self, StorageError> {
-        if let Ok(path_str) = env::var("MIEL_DB_PATH") {
-            let path = Path::new(&path_str);
-            if let Some(parent) = path.parent() {
+        if let Ok(storage_dir) = env::var("MIEL_STORAGE_PATH") {
+            let db_path = Path::new(&storage_dir).join(Self::DEFAULT_DB_FILE);
+            if let Some(parent) = db_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?;
             }
             info!(
-                "Opening SQLite database from MIEL_DB_PATH: {}",
-                path.display()
+                "Using DatabaseStorage from MIEL_STORAGE_PATH environment variable: {}",
+                db_path.display()
             );
-            return Self::new_file(path).await;
+            return Self::new_file(db_path).await;
         }
         let cwd = env::current_dir().map_err(|_| StorageError::ConnectionFailed)?;
         let path = cwd.join(Self::DEFAULT_DB_FILE);
-        info!("Opening default SQLite database at: {}", path.display());
+        info!("Using default DatabaseStorage at: {}", path.display());
         Self::new_file(path).await
     }
 
