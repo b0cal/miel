@@ -24,7 +24,10 @@ pub struct WebServer {
 impl WebServer {
     /// Create a new WebServer instance
     pub fn new(storage: Arc<dyn Storage>, session_manager: Arc<SessionManager>) -> Self {
-        Self { storage, session_manager }
+        Self {
+            storage,
+            session_manager,
+        }
     }
 
     /// Start the web server on the given port
@@ -86,7 +89,11 @@ impl WebServer {
                     match storage.get_session_data(id) {
                         Ok(bytes) => {
                             let res = reply::with_status(
-                                reply::with_header(bytes, "Content-Type", "application/octet-stream"),
+                                reply::with_header(
+                                    bytes,
+                                    "Content-Type",
+                                    "application/octet-stream",
+                                ),
                                 StatusCode::OK,
                             )
                             .into_response();
@@ -140,7 +147,10 @@ impl WebServer {
             });
 
         // Compose routes
-        let routes = dashboard.or(list_sessions).or(get_session_data).or(download_artifacts);
+        let routes = dashboard
+            .or(list_sessions)
+            .or(get_session_data)
+            .or(download_artifacts);
 
         // Start server (warp 0.4)
         let addr: SocketAddr = ([0, 0, 0, 0], port).into();
@@ -164,9 +174,12 @@ impl WebServer {
     #[allow(dead_code)]
     async fn get_session_data(&self, id: Uuid) -> impl Reply {
         match self.storage.get_session_data(id) {
-            Ok(bytes) => reply::with_header(bytes, "Content-Type", "application/octet-stream").into_response(),
+            Ok(bytes) => reply::with_header(bytes, "Content-Type", "application/octet-stream")
+                .into_response(),
             Err(_) => reply::with_status(
-                reply::json(&ApiError { message: "Not found".into() }),
+                reply::json(&ApiError {
+                    message: "Not found".into(),
+                }),
                 StatusCode::NOT_FOUND,
             )
             .into_response(),
@@ -178,7 +191,9 @@ impl WebServer {
         match self.storage.get_capture_artifacts(id) {
             Ok(art) => reply::json(&art).into_response(),
             Err(_) => reply::with_status(
-                reply::json(&ApiError { message: "Not found".into() }),
+                reply::json(&ApiError {
+                    message: "Not found".into(),
+                }),
                 StatusCode::NOT_FOUND,
             )
             .into_response(),

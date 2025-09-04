@@ -8,8 +8,7 @@ import {
   Settings,
 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
-// Import the API service (you can uncomment this when you have it set up)
-// import apiService from '../services/apiService'
+import apiService from '../services/apiService.js'
 
 const Dashboard = () => {
   const [dashboardData, setDashboardData] = useState({
@@ -22,7 +21,9 @@ const Dashboard = () => {
     mostAttackedService: 'HTTP',
     recentActivity: [],
   })
-
+  
+  // Uncomment to use the fetchNetworkActivity 
+  // const networkData = fetchNetworkActivity
   const [networkData, setNetworkData] = useState([
     { time: '00:00', packets: 2400, threats: 5 },
     { time: '04:00', packets: 1398, threats: 2 },
@@ -32,12 +33,34 @@ const Dashboard = () => {
     { time: '20:00', packets: 3800, threats: 4 },
   ])
 
+  const fetchNetworkActivity = async () => {
+    try {
+      // Future: Replace with actual API call
+      const data = await apiService.getNetworkActivity()
+      setNetworkData(data)
+    } catch (error) {
+      console.error('Error fetching network data:', error)
+    }
+  }
+
+  // Uncomment to use the fetchTopThreats
+  // const topThreats = fetchTopThreats
   const [topThreats, setTopThreats] = useState([
     { ip: '203.0.113.45', detections: 23, country: 'Unknown' },
     { ip: '198.51.100.78', detections: 18, country: 'CN' },
     { ip: '192.0.2.123', detections: 15, country: 'RU' },
     { ip: '10.0.0.89', detections: 12, country: 'Local' },
   ])
+
+  const fetchTopThreats = async () => {
+    try {
+      const data = await apiService.getTopThreats()
+      setTopThreats(data)
+      
+    } catch (error) {
+      console.error('Error fetching threats data:', error)
+    }
+  }
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -65,41 +88,6 @@ const Dashboard = () => {
       console.error('Error fetching dashboard data:', error)
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const fetchNetworkActivity = async () => {
-    try {
-      // Future: Replace with actual API call
-      // const data = await apiService.getNetworkActivity()
-      // setNetworkData(data)
-      
-      // Simulate real-time data updates
-      const newData = networkData.map(item => ({
-        ...item,
-        packets: Math.floor(Math.random() * 8000) + 1000,
-        threats: Math.floor(Math.random() * 15) + 1,
-      }))
-      setNetworkData(newData)
-    } catch (error) {
-      console.error('Error fetching network data:', error)
-    }
-  }
-
-  const fetchTopThreats = async () => {
-    try {
-      // Future: Replace with actual API call
-      // const data = await apiService.getTopThreats()
-      // setTopThreats(data)
-      
-      // Simulate threat data updates
-      const updatedThreats = topThreats.map(threat => ({
-        ...threat,
-        detections: Math.floor(Math.random() * 30) + 5,
-      }))
-      setTopThreats(updatedThreats)
-    } catch (error) {
-      console.error('Error fetching threats data:', error)
     }
   }
 
@@ -188,83 +176,92 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-full mx-auto px-4">
         {/* Header - Fixed height with consistent layout */}
-        <div className="grid grid-cols-12 gap-4 mb-6">
-          {/* ASCII Art Container - Fixed height */}
-          <div className="col-span-12 md:col-span-7 lg:col-span-8 xl:col-span-9 bg-gray-600 text-white p-4 rounded-lg overflow-hidden">
-            <div className="flex items-start justify-center min-h-20">
-              <div className="flex-shrink-0 w-full flex justify-left">
+        <div className="flex gap-4 mb-6 h-24 min-h-24">
+          {/* ASCII Art Container - Flex-grow to take remaining space */}
+          <div className="flex-grow bg-gray-600 text-white p-4 rounded-lg overflow-hidden min-w-0">
+            <div className="flex items-center justify-center h-full">
+              <div className="w-full flex justify-center">
                 {/* Single line ASCII art for larger screens */}
                 <div className="font-mono text-white leading-none overflow-hidden hidden xl:block">
                   <pre className="whitespace-pre text-[0.6rem] lg:text-[0.7rem] xl:text-xs">
                     {`██████╗  ██████╗  ██████╗ █████╗ ██╗         ██╗███╗   ███╗██╗███████╗██╗     
-██╔══██╗██╔═████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
+██╔═══██╗██╔═██████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
 ██████╔╝██║██╔██║██║     ███████║██║       ██╔╝ ██╔████╔██║██║█████╗  ██║     
-██╔══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+██╔═══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
 ██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
 ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝`}
                   </pre>
                 </div>
 
                 {/* Compact ASCII art for medium to large screens */}
-                <div className="font-mono text-white leading-none overflow-hidden hidden md:block xl:hidden">
-                  <pre className="whitespace-pre text-[0.35rem] lg:text-[0.4rem]">
+                <div className="font-mono text-white leading-none overflow-hidden hidden lg:block xl:hidden">
+                  <pre className="whitespace-pre text-[0.45rem]">
                     {`██████╗  ██████╗  ██████╗ █████╗ ██╗         ██╗███╗   ███╗██╗███████╗██╗     
-██╔══██╗██╔═████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
+██╔═══██╗██╔═██████╗██╔════╝██╔══██╗██║        ██╔╝████╗ ████║██║██╔════╝██║     
 ██████╔╝██║██╔██║██║     ███████║██║       ██╔╝ ██╔████╔██║██║█████╗  ██║     
-██╔══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+██╔═══██╗████╔╝██║██║     ██╔══██║██║      ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
 ██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
 ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝`}
                   </pre>
                 </div>
 
-                {/* Compact two-line ASCII art for smaller screens - positioned at top */}
+                {/* Medium screens */}
+                <div className="font-mono text-white leading-none overflow-hidden hidden md:block lg:hidden">
+                  <pre className="whitespace-pre text-[0.35rem]">
+                    {`██████╗  ██████╗  ██████╗ █████╗ ██╗         
+██╔═══██╗██╔═██████╗██╔════╝██╔══██╗██║         
+██████╔╝██║██╔██║██║     ███████║██║         
+██╔═══██╗████╔╝██║██║     ██╔══██║██║         
+██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗    
+╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝    
+                                             
+██╗███╗   ███╗██╗███████╗██╗     
+██╔╝████╗ ████║██║██╔════╝██║     
+██╔╝ ██╔████╔██║██║█████╗  ██║     
+██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
+██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
+╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝`}
+                  </pre>
+                </div>
+
+                {/* Small screens - Very compact */}
                 <div className="font-mono text-white leading-none overflow-hidden block md:hidden">
-                  <pre className="whitespace-pre text-[0.3rem] sm:text-[0.35rem]">
-                    {`██████╗  ██████╗  ██████╗ █████╗ ██╗             
-██╔══██╗██╔═████╗██╔════╝██╔══██╗██║             
-██████╔╝██║██╔██║██║     ███████║██║             
-██╔══██╗████╔╝██║██║     ██╔══██║██║             
-██████╔╝╚██████╔╝╚██████╗██║  ██║███████╗        
-╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝        
-                                                 
-                ██╗███╗   ███╗██╗███████╗██╗     
-               ██╔╝████╗ ████║██║██╔════╝██║     
-              ██╔╝ ██╔████╔██║██║█████╗  ██║     
-             ██╔╝  ██║╚██╔╝██║██║██╔══╝  ██║     
-            ██╔╝   ██║ ╚═╝ ██║██║███████╗███████╗
-            ╚═╝    ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝`}
+                  <pre className="whitespace-pre text-[0.25rem] sm:text-[0.3rem]">
+                    {`MIEL - Monitoring Infrastructure 
+for Enhanced Learning`}
                   </pre>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Buttons Container - Fixed height */}
-          <div className="col-span-12 md:col-span-5 lg:col-span-4 xl:col-span-3 bg-gray-600 text-white p-2 md:p-3 lg:p-4 rounded-lg">
-            <div className="flex items-center justify-center h-20">
-              <div className="flex flex-col md:flex-row space-y-1 md:space-y-0 md:space-x-1 lg:space-x-2 flex-shrink-0">
+          {/* Buttons Container - Fixed width */}
+          <div className="w-48 sm:w-52 md:w-56 lg:w-60 xl:w-64 flex-shrink-0 bg-gray-600 text-white p-4 rounded-lg">
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-row space-x-2">
                 <button 
                   onClick={handleRefresh}
-                  className="dashboard-button flex items-center justify-center space-x-1 text-sm px-2 py-1 md:px-3 md:py-2"
+                  className="dashboard-button flex items-center justify-center space-x-1 text-sm px-3 py-2"
                   disabled={isLoading}
                 >
-                  <RefreshCw className={`h-3 w-3 md:h-4 md:w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                   <span className="hidden lg:inline">Refresh</span>
                 </button>
                 <button 
                   onClick={handleExport}
-                  className="dashboard-button flex items-center justify-center space-x-1 text-sm px-2 py-1 md:px-3 md:py-2"
+                  className="dashboard-button flex items-center justify-center space-x-1 text-sm px-3 py-2"
                 >
-                  <Download className="h-3 w-3 md:h-4 md:w-4" />
+                  <Download className="h-4 w-4" />
                   <span className="hidden lg:inline">Export</span>
                 </button>
-                <button className="dashboard-button flex items-center justify-center px-2 py-1 md:px-3 md:py-2">
-                  <Settings className="h-3 w-3 md:h-4 md:w-4" />
+                <button className="dashboard-button flex items-center justify-center px-3 py-2">
+                  <Settings className="h-4 w-4" />
                 </button>
               </div>
             </div>
           </div>
         </div>
+
         <div className="grid grid-cols-12 gap-4">
           {/* Left Column */}
           <div className="col-span-12 md:col-span-3 space-y-4">
