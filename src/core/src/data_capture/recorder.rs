@@ -44,7 +44,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use log::{debug, info};
+use log::{debug, error};
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
@@ -87,7 +87,7 @@ impl StreamRecorder {
     /// The recorder holds only lightweight buffers and references; it’s cheap to
     /// construct and clone the underlying `Arc` values as needed by your orchestration.
     pub fn new(session_id: Uuid, storage: Arc<dyn Storage + Send + Sync>) -> Self {
-        debug!("[{}] StreamRecorder created", session_id);
+        debug!("Stream recorder created for session {}", session_id);
         Self {
             session_id,
             tcp_capture: Arc::new(TcpCapture::new(session_id)),
@@ -113,6 +113,7 @@ impl StreamRecorder {
         client_stream: TcpStream,
         container_stream: TcpStream,
     ) -> Result<(), CaptureError> {
+        debug!("Starting TCP proxy for session {}", self.session_id);
         Arc::clone(&self.tcp_capture)
             .proxy_and_record(client_stream, container_stream)
             .await
@@ -128,7 +129,7 @@ impl StreamRecorder {
     /// Errors
     /// - Returns [`CaptureError::StdioError`] for non‑recoverable IO failures.
     pub fn start_stdio_capture(&mut self, pty_master: std::fs::File) -> Result<(), CaptureError> {
-        debug!("[{}] Starting stdio capture snapshot", self.session_id);
+        debug!("Starting stdio capture for session {}", self.session_id);
         let cap = self
             .stdio_capture
             .get_or_insert_with(|| Arc::new(StdioCapture::new(self.session_id)))
@@ -142,6 +143,10 @@ impl StreamRecorder {
         &mut self,
         path: P,
     ) -> Result<(), CaptureError> {
+        debug!(
+            "Parsing stdio log from file for session {}",
+            self.session_id
+        );
         let cap = self
             .stdio_capture
             .get_or_insert_with(|| Arc::new(StdioCapture::new(self.session_id)))
@@ -171,8 +176,8 @@ impl StreamRecorder {
             (c2s.len() + s2c.len() + stdin.len() + stdout.len() + stderr.len()) as u64;
         let duration = Utc::now() - self.start_time;
 
-        info!(
-            "[{}] Finalized capture: total_bytes={}, tcp_c2s={}, tcp_s2c={}, stdout={}, stderr={}, duration={:?}",
+        debug!(
+            "Capture finalized for session {}: {} bytes total (tcp_c2s={}, tcp_s2c={}, stdout={}, stderr={}), duration={:?}",
             self.session_id,
             total_bytes,
             c2s.len(),
@@ -197,8 +202,15 @@ impl StreamRecorder {
 
         self.storage
             .save_capture_artifacts(&artifacts)
-            .map_err(CaptureError::StorageError)?;
+            .map_err(|e| {
+                error!(
+                    "Failed to save capture artifacts for session {}: {}",
+                    self.session_id, e
+                );
+                CaptureError::StorageError(e)
+            })?;
 
+        debug!("Capture artifacts saved for session {}", self.session_id);
         Ok(artifacts)
     }
 }

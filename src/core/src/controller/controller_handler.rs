@@ -36,14 +36,14 @@ impl Controller {
                 Arc::new(
                     DatabaseStorage::from_config_path(&config.storage_path)
                         .await
-                        .map_err(ControllerError::Storage)?,
+                        .map_err(ControllerError::StorageError)?,
                 )
             }
             StorageBackend::FileSystem => {
                 info!("Initializing FileSystem storage backend");
                 Arc::new(
                     FileStorage::from_config_path(&config.storage_path)
-                        .map_err(ControllerError::Storage)?,
+                        .map_err(ControllerError::StorageError)?,
                 )
             }
         };
@@ -261,7 +261,7 @@ impl Controller {
 
         // Create a temporary directory for test storage
         let temp_dir = TempDir::new().map_err(|_| {
-            ControllerError::Storage(crate::error_handling::types::StorageError::WriteFailed)
+            ControllerError::StorageError(crate::error_handling::types::StorageError::WriteFailed)
         })?;
         let temp_path = temp_dir.path().to_path_buf();
         // Leak the temp dir to keep it alive for the test duration
@@ -269,7 +269,7 @@ impl Controller {
 
         // Use file storage for tests to avoid database complexity
         let storage: Arc<dyn Storage + Send + Sync> =
-            Arc::new(FileStorage::new(temp_path).map_err(|e| ControllerError::Storage(e))?);
+            Arc::new(FileStorage::new(temp_path).map_err(|e| ControllerError::StorageError(e))?);
 
         // Create a mock container manager that doesn't require root privileges
         let container_manager = Arc::new(tokio::sync::Mutex::new(ContainerManager::new_mock()));
