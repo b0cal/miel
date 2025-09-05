@@ -1,0 +1,555 @@
+//! SQLite-backed storage implementation using SeaORM.
+//!
+//! This backend persists sessions, interactions, and capture artifacts to a
+//! local SQLite database. It honors the `MIEL_STORAGE_PATH` environment variable
+//! to select the database file location, otherwise defaults to `./miel.sqlite3`.
+
+use std::env;
+use std::path::Path;
+
+use chrono::{DateTime, Utc};
+use log::{debug, error, info};
+use sea_orm::entity::prelude::*;
+use sea_orm::sea_query::{Expr, Func};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Condition, Database, DatabaseConnection, DbBackend, EntityTrait,
+    QueryFilter, QueryOrder, Set, Statement,
+};
+use uuid::Uuid;
+
+use crate::data_capture::CaptureArtifacts;
+use crate::error_handling::types::StorageError;
+use crate::session::Session;
+use crate::storage::db_entities as session;
+use crate::storage::db_entities::artifacts as art;
+use crate::storage::db_entities::interactions as inter;
+use crate::storage::storage_trait::Storage;
+use crate::storage::types::SessionFilter;
+
+/// Storage backend that uses SQLite via SeaORM.
+///
+/// Construct with [`DatabaseStorage::new`] to respect `MIEL_STORAGE_PATH` or
+/// [`DatabaseStorage::new_file`] for an explicit database path.
+pub struct DatabaseStorage {
+    conn: DatabaseConnection,
+}
+
+impl DatabaseStorage {
+    /// Default database filename used in the application's working directory
+    const DEFAULT_DB_FILE: &'static str = "miel.sqlite3";
+
+    /// Create or open the database using the configured storage path.
+    /// This method should be used when creating storage from application configuration.
+    pub async fn from_config_path<P: AsRef<Path>>(storage_path: P) -> Result<Self, StorageError> {
+        let db_path = storage_path.as_ref().join(Self::DEFAULT_DB_FILE);
+        debug!("Initializing database storage at: {}", db_path.display());
+        Self::new_file(db_path).await
+    }
+
+    /// Create or open the database using `MIEL_STORAGE_PATH` if set, otherwise in the current working directory
+    ///
+    /// This method respects the `MIEL_STORAGE_PATH` environment variable for both configuration
+    /// and environment-based deployments. The database file will be placed directly in the
+    /// specified storage path.
+    pub async fn new() -> Result<Self, StorageError> {
+        if let Ok(storage_dir) = env::var("MIEL_STORAGE_PATH") {
+            let db_path = Path::new(&storage_dir).join(Self::DEFAULT_DB_FILE);
+            if let Some(parent) = db_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?;
+            }
+            debug!(
+                "Using database storage from MIEL_STORAGE_PATH: {}",
+                db_path.display()
+            );
+            return Self::new_file(db_path).await;
+        }
+        let cwd = env::current_dir().map_err(|_| StorageError::ConnectionFailed)?;
+        let path = cwd.join(Self::DEFAULT_DB_FILE);
+        debug!(
+            "Using database storage in current directory: {}",
+            path.display()
+        );
+        Self::new_file(path).await
+    }
+
+    /// Create or open the database at the specified filesystem path.
+    ///
+    /// The file is created if missing; parent directories are ensured.
+    pub async fn new_file<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
+        let path_ref = path.as_ref();
+        if let Some(parent) = path_ref.parent() {
+            std::fs::create_dir_all(parent).map_err(|_| StorageError::WriteFailed)?;
+        }
+        debug!("Connecting to SQLite database: {}", path_ref.display());
+        // DSN understood by sea-orm/sqlx driver; will create file if needed
+        let dsn = format!("sqlite://{}?mode=rwc", path_ref.to_string_lossy());
+
+        let conn = Database::connect(dsn).await.map_err(|e| {
+            error!("Failed to connect to database: {}", e);
+            StorageError::ConnectionFailed
+        })?;
+
+        // ensure foreign keys
+        conn.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "PRAGMA foreign_keys = ON".to_string(),
+        ))
+        .await
+        .map_err(|e| {
+            error!("Failed to enable foreign keys: {}", e);
+            StorageError::WriteFailed
+        })?;
+
+        // create schema
+        debug!("Creating database schema if not exists");
+        conn.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            r#"
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                service_name TEXT NOT NULL,
+                client_addr TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                container_id TEXT,
+                bytes_transferred INTEGER NOT NULL,
+                status TEXT NOT NULL
+            );
+        "#
+            .to_string(),
+        ))
+        .await
+        .map_err(|e| {
+            error!("Failed to create sessions table: {}", e);
+            StorageError::WriteFailed
+        })?;
+
+        conn.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            r#"
+            CREATE TABLE IF NOT EXISTS interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                data BLOB NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            );
+        "#
+            .to_string(),
+        ))
+        .await
+        .map_err(|e| {
+            error!("Failed to create interactions table: {}", e);
+            StorageError::WriteFailed
+        })?;
+
+        conn.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            r#"
+            CREATE TABLE IF NOT EXISTS artifacts (
+                session_id TEXT PRIMARY KEY,
+                json TEXT NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            );
+        "#
+            .to_string(),
+        ))
+        .await
+        .map_err(|e| {
+            error!("Failed to create artifacts table: {}", e);
+            StorageError::WriteFailed
+        })?;
+
+        debug!("Database storage initialized successfully");
+        Ok(Self { conn })
+    }
+
+    fn session_to_model(s: &Session) -> session::ActiveModel {
+        session::ActiveModel {
+            id: Set(s.id.to_string()),
+            service_name: Set(s.service_name.clone()),
+            client_addr: Set(s.client_addr.to_string()),
+            start_time: Set(s.start_time.to_rfc3339()),
+            end_time: Set(s.end_time.map(|t| t.to_rfc3339())),
+            container_id: Set(s.container_id.clone()),
+            bytes_transferred: Set(s.bytes_transferred as i64),
+            status: Set(match s.status {
+                crate::session_management::SessionStatus::Pending => "Pending",
+                crate::session_management::SessionStatus::Active => "Active",
+                crate::session_management::SessionStatus::Completed => "Completed",
+                crate::session_management::SessionStatus::Error => "Error",
+            }
+            .to_string()),
+        }
+    }
+
+    fn from_session_model(m: session::Model) -> Result<Session, StorageError> {
+        let status = match m.status.as_str() {
+            "Pending" => crate::session_management::SessionStatus::Pending,
+            "Active" => crate::session_management::SessionStatus::Active,
+            "Completed" => crate::session_management::SessionStatus::Completed,
+            _ => crate::session_management::SessionStatus::Error,
+        };
+        Ok(Session {
+            id: Uuid::parse_str(&m.id).map_err(|_| StorageError::ReadFailed)?,
+            service_name: m.service_name,
+            client_addr: m
+                .client_addr
+                .parse()
+                .map_err(|_| StorageError::ReadFailed)?,
+            start_time: DateTime::parse_from_rfc3339(&m.start_time)
+                .map_err(|_| StorageError::ReadFailed)?
+                .with_timezone(&Utc),
+            end_time: match m.end_time {
+                Some(s) => Some(
+                    DateTime::parse_from_rfc3339(&s)
+                        .map_err(|_| StorageError::ReadFailed)?
+                        .with_timezone(&Utc),
+                ),
+                None => None,
+            },
+            container_id: m.container_id,
+            bytes_transferred: m.bytes_transferred as u64,
+            status,
+        })
+    }
+}
+
+impl Storage for DatabaseStorage {
+    fn save_session(&self, session_obj: &Session) -> Result<(), StorageError> {
+        let mut am = Self::session_to_model(session_obj);
+        let conn = self.conn.clone();
+        let session_id = session_obj.id.to_string();
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                match session::Entity::find_by_id(session_id)
+                    .one(&conn)
+                    .await
+                    .map_err(|e| {
+                        error!("DB read error in save_session find_by_id: {}", e);
+                        StorageError::ReadFailed
+                    })? {
+                    Some(existing) => {
+                        am.id = Set(existing.id);
+                        am.update(&conn).await.map_err(|e| {
+                            error!("DB write error in save_session update: {}", e);
+                            StorageError::WriteFailed
+                        })?;
+                        info!("Updated a session");
+                    }
+                    None => {
+                        session::Entity::insert(am).exec(&conn).await.map_err(|e| {
+                            error!("DB write error in save_session insert exec: {}", e);
+                            StorageError::WriteFailed
+                        })?;
+                        info!("Inserted a session");
+                    }
+                }
+                Ok(())
+            })
+        })
+    }
+
+    fn get_sessions(&self, filter: Option<SessionFilter>) -> Result<Vec<Session>, StorageError> {
+        let conn = self.conn.clone();
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let mut query = session::Entity::find();
+                if filter.is_some() {
+                    debug!("Applying session filter");
+                }
+                if let Some(f) = filter {
+                    let mut cond = Condition::all();
+                    if let Some(name) = f.service_name {
+                        cond = cond.add(session::Column::ServiceName.eq(name));
+                    }
+                    if let Some(start) = f.start_date {
+                        cond = cond.add(session::Column::StartTime.gte(start.to_rfc3339()));
+                    }
+                    if let Some(end) = f.end_date {
+                        let coalesce = Func::coalesce([
+                            Expr::col(session::Column::EndTime).into(),
+                            Expr::col(session::Column::StartTime).into(),
+                        ]);
+                        cond = cond.add(Expr::expr(coalesce).lte(end.to_rfc3339()));
+                    }
+                    if let Some(ip) = f.client_addr {
+                        cond = cond.add(session::Column::ClientAddr.like(format!("{}:%", ip)));
+                    }
+                    if let Some(st) = f.status {
+                        let s = match st {
+                            crate::session_management::SessionStatus::Pending => "Pending",
+                            crate::session_management::SessionStatus::Active => "Active",
+                            crate::session_management::SessionStatus::Completed => "Completed",
+                            crate::session_management::SessionStatus::Error => "Error",
+                        };
+                        cond = cond.add(session::Column::Status.eq(s));
+                    }
+                    query = query.filter(cond);
+                }
+                let rows = query.all(&conn).await.map_err(|e| {
+                    error!("DB read error in get_sessions: {}", e);
+                    StorageError::ReadFailed
+                })?;
+                debug!("Fetched {} session rows", rows.len());
+                rows.into_iter().map(Self::from_session_model).collect()
+            })
+        })
+    }
+
+    fn save_interaction(&self, session_id: Uuid, data: &[u8]) -> Result<(), StorageError> {
+        let conn = self.conn.clone();
+        let data = data.to_vec();
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let am = inter::ActiveModel {
+                    session_id: Set(session_id.to_string()),
+                    data: Set(data.clone()),
+                    ..Default::default()
+                };
+                am.insert(&conn).await.map_err(|e| {
+                    error!("DB write error in save_interaction insert: {}", e);
+                    StorageError::WriteFailed
+                })?;
+                debug!("Inserted an interaction ({} bytes)", data.len());
+                Ok(())
+            })
+        })
+    }
+
+    fn get_session_data(&self, session_id: Uuid) -> Result<Vec<u8>, StorageError> {
+        let conn = self.conn.clone();
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let mut out = Vec::new();
+                let rows = inter::Entity::find()
+                    .filter(inter::Column::SessionId.eq(session_id.to_string()))
+                    .order_by_asc(inter::Column::Id)
+                    .all(&conn)
+                    .await
+                    .map_err(|e| {
+                        error!("DB read error in get_session_data: {}", e);
+                        StorageError::ReadFailed
+                    })?;
+                let mut chunks = 0usize;
+                for r in rows {
+                    out.extend_from_slice(&r.data);
+                    chunks += 1;
+                }
+                debug!(
+                    "Concatenated {} interaction chunk(s), total {} bytes",
+                    chunks,
+                    out.len()
+                );
+                Ok(out)
+            })
+        })
+    }
+
+    fn cleanup_old_sessions(&self, older_than: DateTime<Utc>) -> Result<usize, StorageError> {
+        let conn = self.conn.clone();
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let cutoff = older_than.to_rfc3339();
+                let coalesce = Func::coalesce([
+                    Expr::col(session::Column::EndTime).into(),
+                    Expr::col(session::Column::StartTime).into(),
+                ]);
+                let cond = Expr::expr(coalesce).lt(cutoff.clone());
+                let res = session::Entity::delete_many()
+                    .filter(cond)
+                    .exec(&conn)
+                    .await
+                    .map_err(|e| {
+                        error!("DB write error in cleanup_old_sessions delete_many: {}", e);
+                        StorageError::WriteFailed
+                    })?;
+                info!(
+                    "Deleted {} session(s) older than {}",
+                    res.rows_affected, cutoff
+                );
+                Ok(res.rows_affected as usize)
+            })
+        })
+    }
+
+    fn save_capture_artifacts(&self, artifacts: &CaptureArtifacts) -> Result<(), StorageError> {
+        let conn = self.conn.clone();
+        let id = artifacts.session_id.to_string();
+        let json = serde_json::to_string(artifacts).map_err(|_| StorageError::WriteFailed)?;
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                match art::Entity::find_by_id(id.clone())
+                    .one(&conn)
+                    .await
+                    .map_err(|e| {
+                        error!("DB read error in save_capture_artifacts find_by_id: {}", e);
+                        StorageError::ReadFailed
+                    })? {
+                    Some(_) => {
+                        let am = art::ActiveModel {
+                            session_id: Set(id.clone()),
+                            json: Set(json),
+                        };
+                        am.update(&conn).await.map_err(|e| {
+                            error!("DB write error in save_capture_artifacts update: {}", e);
+                            StorageError::WriteFailed
+                        })?;
+                        info!("Updated artifacts for a session");
+                    }
+                    None => {
+                        let am = art::ActiveModel {
+                            session_id: Set(id.clone()),
+                            json: Set(json),
+                        };
+                        art::Entity::insert(am).exec(&conn).await.map_err(|e| {
+                            error!(
+                                "DB write error in save_capture_artifacts insert exec: {}",
+                                e
+                            );
+                            StorageError::WriteFailed
+                        })?;
+                        info!("Inserted artifacts for a session");
+                    }
+                }
+                Ok(())
+            })
+        })
+    }
+
+    fn get_capture_artifacts(&self, session_id: Uuid) -> Result<CaptureArtifacts, StorageError> {
+        let conn = self.conn.clone();
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let id = session_id.to_string();
+                let m = art::Entity::find_by_id(id.clone())
+                    .one(&conn)
+                    .await
+                    .map_err(|e| {
+                        error!("DB read error in get_capture_artifacts find_by_id: {}", e);
+                        StorageError::ReadFailed
+                    })?
+                    .ok_or(StorageError::ReadFailed)?;
+                let artifacts: CaptureArtifacts =
+                    serde_json::from_str(&m.json).map_err(|_| StorageError::ReadFailed)?;
+                debug!("Loaded artifacts from database");
+                Ok(artifacts)
+            })
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session_management::SessionStatus;
+    use tempfile::TempDir;
+
+    async fn temp_db() -> DatabaseStorage {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.sqlite3");
+        // Keep TempDir alive by leaking it for the test duration
+        Box::leak(Box::new(dir));
+        DatabaseStorage::new_file(path).await.unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_db_session_and_filter() {
+        let storage = temp_db().await;
+        let now = Utc::now();
+        let s1 = Session {
+            id: Uuid::new_v4(),
+            service_name: "ssh".into(),
+            client_addr: "127.0.0.1:2222".parse().unwrap(),
+            start_time: now,
+            end_time: Some(now),
+            container_id: None,
+            bytes_transferred: 100,
+            status: SessionStatus::Completed,
+        };
+        storage.save_session(&s1).unwrap();
+        let all = storage.get_sessions(None).unwrap();
+        assert_eq!(all.len(), 1);
+        let filtered = storage
+            .get_sessions(Some(SessionFilter {
+                service_name: Some("ssh".into()),
+                ..Default::default()
+            }))
+            .unwrap();
+        assert_eq!(filtered.len(), 1);
+        let none = storage
+            .get_sessions(Some(SessionFilter {
+                service_name: Some("http".into()),
+                ..Default::default()
+            }))
+            .unwrap();
+        assert_eq!(none.len(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_db_interactions_roundtrip() {
+        let storage = temp_db().await;
+        let id = Uuid::new_v4();
+        storage
+            .save_session(&Session {
+                id,
+                service_name: "svc".into(),
+                client_addr: "127.0.0.1:1".parse().unwrap(),
+                start_time: Utc::now(),
+                end_time: None,
+                container_id: None,
+                bytes_transferred: 0,
+                status: SessionStatus::Pending,
+            })
+            .unwrap();
+        storage.save_interaction(id, b"abc").unwrap();
+        storage.save_interaction(id, b"def").unwrap();
+        let data = storage.get_session_data(id).unwrap();
+        assert_eq!(data, b"abcdef");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_db_artifacts_roundtrip_and_cleanup() {
+        let storage = temp_db().await;
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        let session = Session {
+            id,
+            service_name: "svc".into(),
+            client_addr: "127.0.0.1:1".parse().unwrap(),
+            start_time: now,
+            end_time: Some(now),
+            container_id: None,
+            bytes_transferred: 0,
+            status: SessionStatus::Completed,
+        };
+        storage.save_session(&session).unwrap();
+        let artifacts = CaptureArtifacts {
+            session_id: id,
+            tcp_client_to_container: vec![1, 2],
+            tcp_container_to_client: vec![3, 4],
+            stdio_stdin: "input".to_string(),
+            stdio_stdout: "output".to_string(),
+            stdio_stderr: "errors".to_string(),
+            tcp_timestamps: vec![],
+            stdio_timestamps: vec![],
+            total_bytes: 5,
+            duration: chrono::Duration::seconds(1),
+        };
+        storage.save_capture_artifacts(&artifacts).unwrap();
+        let fetched = storage.get_capture_artifacts(id).unwrap();
+        assert_eq!(fetched.total_bytes, 5);
+        let removed = storage
+            .cleanup_old_sessions(Utc::now() + chrono::Duration::seconds(1))
+            .unwrap();
+        assert_eq!(removed, 1);
+        let missing = storage.get_capture_artifacts(id);
+        assert!(missing.is_err());
+    }
+}

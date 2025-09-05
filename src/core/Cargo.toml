@@ -1,10 +1,31 @@
 [package]
 name = "miel"
-version = "0.0.2"
+version = "1.0.0"
 edition = "2021"
 
 [[bin]]
 name = "miel"
-path = "main.rs"
+path = "src/main.rs"
 
 [dependencies]
+env_logger = "0.11.8"
+log = "0.4.27"
+clap = { version = "4.5.46", features = ["derive", "env"] }
+clap_builder = "4.5.46"
+regex = "1.11.2"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.139"
+toml = "0.9.5"
+tempfile = "3.21.0"
+serial_test = "3.2.0"
+tokio = { version = "1.47.1", features = ["full", "test-util"] }
+chrono = { version = "0.4.41", features = ["serde"] }
+tokio-test = "0.4.4"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+sea-orm = { version = "1.1.15", default-features = false, features = ["sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+warp = { version = "0.4", features = ["server"] }
+rust-embed = { version = "8.7.2", features = ["interpolate-folder-path", "debug-embed"] }
+mime_guess = "2.0"

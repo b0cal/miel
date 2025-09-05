@@ -1,0 +1,593 @@
+//! # Network Listener Module
+//!
+//! This module provides network listening capacities for handling incoming TCP connections and
+//! routing them to appropriate service based on detected protocol
+//!
+//! The main component is [`NetworkListener`] which manages multiple TCP sockets, detects incoming
+//! service types, filters connections, and forwards valid sessions to the [`SessionManager`] via
+//! [`SessionRequest`] through an async channel.
+//!
+//! ## Architecture
+//!
+//! ```text
+//! ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+//! │ Incoming        │───▶│ NetworkListener  │───▶│ SessionManager  │
+//! │ Connections     │    │                  │    │ (via mpsc)      │
+//! └─────────────────┘    │ - Service Detection   └─────────────────┘
+//!                        │ - Connection Filter
+//!                        │ - Protocol Analysis
+//!                        └──────────────────┘
+//! ```
+//!
+//! ## Usage
+//!
+//! ```no_run
+//! use tokio::sync::mpsc;
+//! use std::net::Ipv4Addr;
+//! use miel::configuration::types::ServiceConfig;
+//! use miel::network::network_listener::NetworkListener;
+//! use miel::error_handling::types::NetworkError;
+//! use std::net::SocketAddr;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), NetworkError> {
+//!     // Create a channel for session requests
+//!     let (tx, rx) = mpsc::channel(100);
+//!     
+//!     let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
+//!     // Initialize the network listener
+//!     let mut listener = NetworkListener::new(tx);
+//!     
+//!     // Configure services to listen on
+//!     let services = vec![
+//!         ServiceConfig { port: 8080, ..Default::default() },
+//!         ServiceConfig { port: 8443, ..Default::default() },
+//!     ];
+//!
+//!     // Bind to the configured service
+//!     listener.bind_services(&services)?;
+//!
+//!     let copy = listener.extract_for_listening();
+//!
+//!     // Start listening for connections
+//!     NetworkListener::start_listening(copy, Ipv4Addr::new(0, 0, 0, 0)).await?;
+//!
+//!     Ok(())
+//! }
+//! ```
+
+use super::connection_filter::*;
+use super::service_detector::*;
+use super::types::SessionRequest;
+use crate::configuration::types::ServiceConfig;
+use crate::error_handling::types::NetworkError;
+
+use chrono::Utc;
+use log::{debug, error, info, warn};
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::time::Duration;
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
+use tokio::sync::{broadcast, mpsc::Sender};
+use tokio::task::JoinHandle;
+
+/// A network listener that manages multiple TCP socket and routes connections to services.
+///
+/// `NetworkListener` is responsible for:
+/// - Binding to multiple ports based on service configuration
+/// - Detecting the type of incoming service requests
+/// - Filtering connections based on security policies
+/// - Forwarding valid sessions to the session manager
+///
+/// The listener operates asynchronously and uses an MPSC channel to communicate with the session
+/// manager
+///
+/// # Examples
+///
+/// ```rust, no_run
+/// use tokio::sync::mpsc;
+/// use miel::network::network_listener::NetworkListener;
+/// use miel::configuration::types::ServiceConfig;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let (tx, rx) = mpsc::channel(100);
+///
+///     let bind_addr = std::net::SocketAddr::from(([0, 0, 0, 0], 0));
+///     let mut listener = NetworkListener::new(tx);
+///
+///     // Configure and bind services
+///     let services = vec![ServiceConfig::default()];
+///     listener.bind_services(&services).unwrap();
+/// }
+/// ```
+pub struct NetworkListener {
+    /// Map of port number to their corresponding TCP sockets
+    listeners: HashMap<u16, TcpSocket>,
+
+    /// Channel sender for forwarding session requests to the session manager
+    session_tx: Sender<SessionRequest>,
+
+    /// Service detection component for identifying connection protocols
+    service_detector: ServiceDetector,
+
+    /// Connection filtering component for security and access control
+    connection_filter: ConnectionFilter,
+
+    /// Channel sender for broadcasting shutdown order
+    shutdown_tx: Option<broadcast::Sender<()>>,
+
+    /// Handles on the listeners to handle shutdown comprehensively
+    listener_handles: Vec<JoinHandle<()>>,
+}
+
+impl NetworkListener {
+    /// Creates a new `NetworkListener` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_tx` - A channel sender for forwarding session requests to the session manager
+    ///
+    /// # Returns
+    ///
+    /// A new `NetworkListener` with empty listeners and default components.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use tokio::sync::mpsc;
+    /// use miel::network::{network_listener::NetworkListener, service_detector::ServiceDetector, connection_filter::ConnectionFilter};
+    /// use miel::network::types::SessionRequest;
+    ///
+    /// let (tx, _) = mpsc::channel(100);
+    /// let listener = NetworkListener::new(tx);
+    /// ```
+    pub fn new(session_tx: Sender<SessionRequest>) -> Self {
+        let (shutdown_tx, _) = broadcast::channel(1);
+
+        Self {
+            listeners: HashMap::new(),
+            session_tx,
+            service_detector: ServiceDetector {
+                service_patterns: HashMap::new(),
+            },
+            connection_filter: ConnectionFilter::default(),
+            shutdown_tx: Some(shutdown_tx),
+            listener_handles: Vec::new(),
+        }
+    }
+
+    pub fn extract_for_listening(&mut self) -> Self {
+        let listeners = std::mem::take(&mut self.listeners);
+        let session_tx = self.session_tx.clone();
+        let service_detector = self.service_detector.clone();
+        let connection_filter = self.connection_filter.clone();
+        let shutdown_tx = self.shutdown_tx.as_ref().unwrap().clone();
+
+        Self {
+            listeners,
+            session_tx,
+            service_detector,
+            connection_filter,
+            shutdown_tx: Some(shutdown_tx),
+            listener_handles: Vec::new(),
+        }
+    }
+
+    /// Binds TCP sockets to the ports specified in the service configurations.
+    ///
+    /// This method creates and configures TCP sockets for each service, storing them in the
+    /// internal listeners map. It also initializes the service detector with the provided service
+    /// configurations
+    pub fn bind_services(&mut self, services: &[ServiceConfig]) -> Result<(), NetworkError> {
+        self.service_detector = ServiceDetector::new(services);
+
+        let services_it = services.iter();
+
+        for s in services_it {
+            let socket = match TcpSocket::new_v4() {
+                Ok(sock) => sock,
+                Err(err) => {
+                    error!("Failed to create TCP socket for port {}: {}", s.port, err);
+                    return Err(NetworkError::SockError(err));
+                }
+            };
+            self.listeners.insert(s.port, socket);
+        }
+
+        debug!("Service bindings configured for {} ports", services.len());
+        Ok(())
+    }
+
+    /// Starts listening for incoming connections and processes them.
+    ///
+    /// This method begins the main listening loop, accepting incoming connections, performing
+    /// service detection, and forwarding valid sessions to the session manager
+    ///
+    /// The method currently includes test code :
+    /// 1. Starts a test HTTP server
+    /// 2. Creates a test connection
+    /// 3. Sends a test session request through the channel
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the listening process starts successfully
+    /// * `Err(NetworkError::ChannelFailed)` if sending through the session channel fails
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The session channel is closed or full
+    /// - Network connection establishment fails
+    ///
+    /// # Note
+    ///
+    /// The current implementation is primarly for testing. In production, this method should
+    /// implement the full listening loop for all configured services.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore    
+    /// use::tokio::sync::mpsc;
+    /// use miel::network::network_listener::NetworkListener;
+    /// use miel::error_handling::types::NetworkError;
+    /// use miel::configuration::types::ServiceConfig;
+    /// use std::net::Ipv4Addr;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), NetworkError> {
+    ///     let (tx, rx) = channel(100);
+    ///     let mut listener = NetworkListener::new(tx);
+    ///
+    ///     listener.bind_services(&[ServiceConfig::default()])?;
+    ///     let copy = listener.extract_for_listening();
+    ///     NetworkListener::start_listening(copy, Ipv4Addr::new(127, 0, 0, 1));
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn start_listening(mut copy: Self, bind_addr: Ipv4Addr) -> Result<(), NetworkError> {
+        let mut listener_handles = Vec::new();
+
+        info!("Starting network listeners on {}", bind_addr);
+
+        // Bind all sockets and create listeners
+        for (port, socket) in copy.listeners.drain() {
+            debug!("Binding service listener to {}:{}", bind_addr, port);
+
+            // Bind socket to the bind_address with port specified in the ServiceConfig
+            if let Err(e) = socket.bind(SocketAddr::new(IpAddr::V4(bind_addr), port)) {
+                error!("Failed to bind to port {}: {}", port, e);
+                return Err(NetworkError::BindError(e));
+            }
+
+            // Convert to listener
+            let listener = match socket.listen(1024) {
+                Ok(listener) => listener,
+                Err(e) => {
+                    error!("Failed to listen on port {}: {}", port, e);
+                    return Err(NetworkError::BindError(e));
+                }
+            };
+
+            debug!("Service listener bound to port {}", port);
+
+            // Clone components used for the async listening session
+            let session_tx_clone = copy.session_tx.clone();
+            let service_detector_clone = copy.service_detector.clone();
+            let connection_filter_clone = copy.connection_filter.clone();
+            let shutdown_rx_clone = copy.shutdown_tx.as_ref().unwrap().subscribe();
+
+            let handle = tokio::spawn(async move {
+                Self::listen_on_port(
+                    listener,
+                    session_tx_clone,
+                    service_detector_clone,
+                    connection_filter_clone,
+                    port,
+                    shutdown_rx_clone,
+                )
+                .await
+            });
+
+            listener_handles.push(handle);
+        }
+
+        info!(
+            "Network listeners started on {} ports",
+            listener_handles.len()
+        );
+
+        for handle in listener_handles {
+            if let Err(e) = handle.await {
+                error!("Network listener task failed: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn listen_on_port(
+        listener: TcpListener,
+        session_tx: Sender<SessionRequest>,
+        service_detector: ServiceDetector,
+        connection_filter: ConnectionFilter,
+        port: u16,
+        mut shutdown_rx: broadcast::Receiver<()>,
+    ) {
+        debug!("Network listener active on port {}", port);
+
+        loop {
+            tokio::select! {
+                //Accept incoming connection
+                accept_result = listener.accept() => {
+                    let (stream, client_addr) = match accept_result {
+                        Ok((stream, addr)) => {
+                            debug!("Connection received from {} on port {}", addr, port);
+                            (stream, addr)
+                        }
+                        Err(e) => {
+                            error!("Failed to accept connection on port {}: {}", port, e);
+                            continue;
+                        }
+                    };
+
+                    // Check if connection should be accepted
+                    if !connection_filter.should_accept_connection(&client_addr.ip(), port) {
+                        debug!("Connection from {} on port {} rejected by filter", client_addr, port);
+                        continue;
+                    }
+
+                    // Clone components for the connection handling task
+                    let session_tx_clone = session_tx.clone();
+                    let service_detector_clone = service_detector.clone();
+
+                    tokio::spawn(async move {
+                        if let Err(e) = Self::handle_connection(
+                            stream,
+                            client_addr,
+                            session_tx_clone,
+                            service_detector_clone,
+                        )
+                        .await
+                        {
+                            error!("Failed to handle connection from {}: {}", client_addr, e);
+                        }
+                    });
+                }
+
+                _ = shutdown_rx.recv() => {
+                    debug!("Shutdown signal received for port {}", port);
+                    break;
+                }
+            }
+        }
+
+        debug!("Network listener on port {} stopped", port);
+    }
+
+    pub async fn shutdown(&mut self) -> Result<(), NetworkError> {
+        debug!("Initiating network listener shutdown");
+
+        if let Some(shutdown_tx) = &self.shutdown_tx {
+            if shutdown_tx.send(()).is_err() {
+                debug!("No active listeners found during shutdown");
+            } else {
+                debug!("Shutdown signal sent to all listeners");
+            }
+        }
+
+        let timeout_duration = Duration::from_secs(5);
+        let mut shutdown_tasks = Vec::new();
+
+        for handle in self.listener_handles.drain(..) {
+            shutdown_tasks.push(handle);
+        }
+
+        if !shutdown_tasks.is_empty() {
+            debug!(
+                "Waiting for {} listeners to shut down",
+                shutdown_tasks.len()
+            );
+
+            for (i, handle) in shutdown_tasks.into_iter().enumerate() {
+                match tokio::time::timeout(timeout_duration, handle).await {
+                    Ok(Ok(())) => {
+                        debug!("Listener {} shutdown completed", i + 1);
+                    }
+                    Ok(Err(e)) => {
+                        error!("Listener {} failed during shutdown: {}", i + 1, e);
+                    }
+                    Err(_) => {
+                        error!("Listener {} shutdown timed out", i + 1);
+                    }
+                }
+            }
+        }
+
+        // Clear the shutdown channel
+        self.shutdown_tx = None;
+        info!("Network listener shutdown completed");
+        Ok(())
+    }
+
+    async fn handle_connection(
+        mut stream: TcpStream,
+        client_addr: SocketAddr,
+        session_tx: Sender<SessionRequest>,
+        service_detector: ServiceDetector,
+    ) -> Result<(), NetworkError> {
+        debug!("Identifying service for connection from {}", client_addr);
+        let service_name = match service_detector.identify_service(&mut stream).await {
+            Ok(name) => name,
+            Err(e) => {
+                warn!(
+                    "Failed to detect service for connection from {}: {}",
+                    client_addr, e
+                );
+                return Err(e);
+            }
+        };
+
+        debug!(
+            "Detected service '{}' for connection from {}",
+            service_name, client_addr
+        );
+
+        // Create session request
+        let session_request = SessionRequest {
+            stream: Some(stream),
+            service_name,
+            client_addr,
+            timestamp: Utc::now(),
+        };
+
+        if session_tx.send(session_request).await.is_err() {
+            error!("Failed to send session request - channel may be closed");
+            return Err(NetworkError::ChannelFailed);
+        }
+
+        debug!("Session request sent for {}", client_addr);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use tokio::net::TcpListener;
+    use tokio::sync::mpsc;
+    use tokio::time;
+
+    #[test]
+    fn test_bind_services_from_legit_file() {
+        // Build channel
+        let (tx, _) = mpsc::channel(100);
+
+        // Create new NetworkListener
+        let mut listener = NetworkListener::new(tx);
+
+        // Binding a server shouldn't return an error, if returns Err, panic! and test fails
+        listener.bind_services(&[ServiceConfig::default()]).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_start_listening_success() {
+        let (session_tx, _) = mpsc::channel::<SessionRequest>(100);
+
+        let mut network_listener = NetworkListener::new(session_tx);
+
+        let service_config = ServiceConfig {
+            name: "HTTP".to_string(),
+            port: 8080,
+            ..Default::default()
+        };
+        let _result = network_listener.bind_services(&[service_config]);
+        let copy = network_listener.extract_for_listening();
+
+        // Start listening in a separate task with timeout since it runs indefinitely
+        let bind_addr = Ipv4Addr::new(127, 0, 0, 1);
+        let listening_task =
+            tokio::spawn(async move { NetworkListener::start_listening(copy, bind_addr).await });
+
+        // Give it a moment to start binding
+        time::sleep(time::Duration::from_millis(100)).await;
+
+        // Cancel the task to clean up
+        listening_task.abort();
+    }
+
+    #[tokio::test]
+    async fn test_listen_on_port_accepts_connections() {
+        let (session_tx, mut session_rx) = mpsc::channel::<SessionRequest>(100);
+        let (shutdown_tx, _) = broadcast::channel(1);
+
+        let shutdown_rx = shutdown_tx.subscribe();
+
+        // Create a test listener to get the port
+        let test_listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let server_addr = test_listener.local_addr().unwrap();
+        let port = server_addr.port();
+
+        log::debug!(
+            "Port value in test_listen_on_port_accepts_connections: {}",
+            port
+        );
+
+        let test_service = ServiceConfig {
+            port,
+            name: "test_service".to_string(),
+            ..ServiceConfig::default()
+        };
+
+        let service_detector = ServiceDetector::new(&[test_service]);
+        let connection_filter = ConnectionFilter::default();
+
+        // Start listening in background
+        let listen_task = tokio::spawn(async move {
+            NetworkListener::listen_on_port(
+                test_listener,
+                session_tx,
+                service_detector,
+                connection_filter,
+                port,
+                shutdown_rx,
+            )
+            .await;
+        });
+
+        // Give the listener time to start
+        time::sleep(time::Duration::from_millis(10)).await;
+
+        // Connect to the listener
+        let _client_stream = TcpStream::connect(server_addr).await.unwrap();
+
+        // Should receive a session request (with timeout to avoid hanging)
+        let session_result =
+            time::timeout(time::Duration::from_millis(500), session_rx.recv()).await;
+        assert!(session_result.is_ok());
+
+        listen_task.abort();
+    }
+
+    /*
+    #[tokio::test]
+    async fn test_handle_connection_success() {
+        info!("=== Start of Handle Connection Test ===");
+        let (session_tx, mut session_rx) = mpsc::channel::<SessionRequest>(100);
+        let service_detector = ServiceDetector::new(&[ServiceConfig::default()]);
+
+        // Create a mock TCP connection
+        let listener = TcpListener::bind("127.0.0.1:8000").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // Connect to create a stream pair
+        let _client_stream = TcpStream::connect(addr).await.unwrap();
+        let (server_stream, client_addr) = listener.accept().await.unwrap();
+
+        log::debug!("Starting handling built connection...");
+        let result = NetworkListener::handle_connection(
+            server_stream,
+            client_addr,
+            session_tx,
+            service_detector,
+        )
+        .await;
+
+        log::debug!("Came out of handle connection await in test");
+
+        assert!(result.is_ok());
+
+        // Verify session request was sent
+        log::debug!("Waiting to receive a SessionRequest");
+        let session_request = time::timeout(time::Duration::from_millis(100), session_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(session_request.client_addr, client_addr);
+        assert!(session_request.timestamp <= Utc::now());
+    }
+    */
+}

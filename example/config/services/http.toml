@@ -1,0 +1,11 @@
+name = "http"
+port = 8080
+protocol = "TCP"
+container_image = "minimal-http"
+enabled = true
+header_patterns = ["GET", "POST", "HEAD"]
+banner_response = "HTTP/1.1 200 OK\r\nServer: nginx/1.18.0"
+
+[obfuscation]
+enabled = false
+# HTTP service uses minimal obfuscation by default

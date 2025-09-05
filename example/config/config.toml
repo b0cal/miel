@@ -1,0 +1,28 @@
+# Default Miel Honeypot Configuration
+# This is the main configuration file for the Miel honeypot system
+
+bind_address = "0.0.0.0"
+storage_path = "/tmp/miel-data"
+storage_backend = "database"
+web_ui_enabled = true
+web_ui_port = 3000
+max_sessions = 100
+session_timeout_secs = 3600
+
+# IP filtering configuration
+[ip_filter]
+whitelist_mode = false
+allowed_ranges = [
+    { start = "0.0.0.0", end = "255.255.255.255" }
+]
+blocked_ranges = []
+
+# Port filtering configuration
+[port_filter]
+allowed_ports = [
+    { start = 1024, end = 65535 }
+]
+blocked_ports = []
+
+# Default services are loaded from the services/ directory
+# If no services/ directory exists, built-in defaults will be used

@@ -48,6 +48,69 @@ providing richer interaction data for analysis.
 > see the [architecture](/doc/research/architecture.md#rust-libraries)
 > description
 
+## 🍯 Build and start
+
+### Pre-requisit
+
+- Debian/Fedora (x86_64)
+- systemd-nspawn
+
+### Installation
+
+1. Download the latest release from the [Releases](https://github.com/b0cal/miel/releases) tab
+
+  or
+
+  Clone the project to build from source
+ ```sh
+git clone https://github.com/b0cal/miel.git
+
+cd miel/src/core
+
+cargo build
+```
+
+2. At the first start-up an example config will be generated in `example/template.toml`. Feel free to play with it and use it to start the app
+> [!NOTE]
+> super user rights are needed to process the service containers
+```sh
+sudo miel <PATH_TO_CONFIG>
+```
+
+3. If you enabled the web interface go on http://localhost:3000 to view the dashboard or use the documented [web API](./docs/development/web_api.md) to fetch the data collected for further analysis
+
+> [!TIP]
+>**EXAMPLES:**
+>
+> Get all sessions basic data
+> ```sh
+> wget http://localhost:3000/api/sessions
+> ```
+> 
+> Get session data by id
+> ```sh
+> wget http://localhost:3000/api/sessions/:id/data)
+> ```
+>
+> Get sessions artifact by id
+> ```sh
+> wget http://localhost:3000/api/sessions/:id/artifacts)
+> ```
+
+
+## Known issues
+
+- If the web application crashes it panics and stops the application
+- If the app is stopped and restarted too fast the binding ports could be unavailable for a bit.
+  - **Workaround**: Just wait for the timeout for the port to be available again (approx. 1 min)
+
+## Further improvements
+
+- Support [oci](opencontainers.org) container images
+- Allow UDP based services
+- Allow hotswapping services from the dashboard
+- More comprehensive filtering solution on the dashboard
+
 ## Contributing
 
 Please see [CONTRIBUTING](https://github.com/b0cal/miel/contributing) tab.
