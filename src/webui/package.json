@@ -1,6 +1,6 @@
 {
   "name": "miel-webui",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Web UI for MIEL (Monitoring Infrastructure for Enhanced Learning) network monitoring system",
   "type": "module",
   "engines": {
