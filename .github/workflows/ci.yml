@@ -80,6 +80,10 @@ jobs:
           cache: npm
           cache-dependency-path: src/webui/package-lock.json
 
+      - name: Build node project
+        run: npm run build
+        working-directory: src/webui
+
       - name: Run Rust tests
         run: cargo make core-test
 
