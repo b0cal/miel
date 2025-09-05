@@ -23,8 +23,10 @@ class ApiService {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
+
+      const text = await response.text()
       
-      return await response.json()
+      return JSON.parse(text)
     } catch (error) {
       console.error('API request failed:', error)
       throw error
@@ -93,11 +95,10 @@ class ApiService {
   async getByteTransferTimeline() {
     try {
       const sessions = await this.request('api/sessions')
-
       const now = new Date()
       const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000))
-
       const timelineData = []
+
       for (let i = 0; i < 6; ++i) {
         const intervalStart = new Date(twentyFourHoursAgo.getTime() + (i*4 *60* 60 * 1000))
         const intervalEnd = new Date(intervalStart.getTime() * (4 * 60 * 60 * 1000))
@@ -135,13 +136,13 @@ class ApiService {
             }
           }
         })
-
-        return timelineData.map(interval => ({
-          time: interval.time,
-          packets: interval.packets,
-          threats: interval.threats,
-        }))
       }       
+
+      return timelineData.map(interval => ({
+        time: interval.time,
+        packets: interval.packets,
+        threats: interval.threats,
+      }))
     } catch (error) {
       console.error('Error fetching bytes transferred timeline:', error)
       throw error

@@ -1,20 +1,54 @@
 use crate::storage::types::SessionFilter;
+use rust_embed::RustEmbed;
 use std::sync::Arc;
 use uuid::Uuid;
 use warp::{http::StatusCode, reply, Filter, Rejection, Reply};
 
 use super::ApiError;
 use crate::storage::storage_trait::Storage;
+use mime_guess;
+
+#[derive(RustEmbed)]
+#[folder = "$CARGO_MANIFEST_DIR/../webui/dist"]
+struct WebUiAssets;
+
+async fn serve_static_file(path: warp::path::Tail) -> Result<impl Reply, Rejection> {
+    let path_str = path.as_str();
+
+    if let Some(asset) = WebUiAssets::get(path_str) {
+        let mime = mime_guess::from_path(path_str).first_or_octet_stream();
+
+        Ok(warp::reply::with_header(
+            asset.data.into_owned(), // Convert Cow to owned Vec<u8>
+            "content-type",
+            mime.as_ref(),
+        ))
+    } else {
+        Err(warp::reject::not_found())
+    }
+}
+
+async fn serve_index() -> Result<impl Reply, Rejection> {
+    if let Some(asset) = WebUiAssets::get("index.html") {
+        Ok(warp::reply::with_header(
+            asset.data.into_owned(), // Convert Cow to owned Vec<u8>
+            "content-type",
+            "text/html",
+        ))
+    } else {
+        Err(warp::reject::not_found())
+    }
+}
 
 /// GET /
 pub fn dashboard_route() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    let webui_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../webui/dist");
+    let redirect_root = warp::path::end().and(warp::get()).and_then(serve_index);
 
-    let redirect_root = warp::path::end()
+    //.map(|| warp::redirect::temporary(warp::http::Uri::from_static("/index.html")));
+
+    let static_files = warp::path::tail()
         .and(warp::get())
-        .map(|| warp::redirect::temporary(warp::http::Uri::from_static("/index.html")));
-
-    let static_files = warp::fs::dir(webui_path);
+        .and_then(serve_static_file);
 
     redirect_root.or(static_files)
 }
