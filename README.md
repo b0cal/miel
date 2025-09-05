@@ -113,4 +113,4 @@ sudo miel <PATH_TO_CONFIG>
 
 ## Contributing
 
-Please see [CONTRIBUTING](https://github.com/b0cal/miel/contributing) tab.
+Please see [CONTRIBUTING](https://github.com/b0cal/miel?tab=contributing-ov-file) tab.
