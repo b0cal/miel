@@ -124,7 +124,8 @@ Then navigate to [http://localhost:3000](http://localhost:3000) to view the web
 interface. The API is available at
 [http://localhost:3000/api](http://localhost:3000/api).
 
-> [!TIP] > **EXAMPLES:**
+> [!TIP]
+> **EXAMPLES:**
 > Get all sessions basic data
 >
 > ```sh
