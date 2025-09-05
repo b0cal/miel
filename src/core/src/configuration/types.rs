@@ -101,6 +101,36 @@ pub struct ServiceConfig {
     pub enabled: bool,
     pub header_patterns: Vec<String>,
     pub banner_response: Option<String>,
+    pub obfuscation: ObfuscationConfig,
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct ObfuscationConfig {
+    pub enabled: bool,
+    pub fake_hostname: Option<String>,
+    pub fake_processes: Vec<FakeProcess>,
+    pub fake_files: Vec<FakeFile>,
+    pub fake_users: Vec<String>,
+    pub fake_network_interfaces: Vec<String>,
+    pub system_uptime_days: Option<u32>,
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct FakeProcess {
+    pub name: String,
+    pub pid: Option<u32>,
+    pub cpu_percent: Option<f32>,
+    pub memory_mb: Option<u32>,
+    pub command: String,
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct FakeFile {
+    pub path: String,
+    pub content: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub is_executable: bool,
 }
 
 impl Default for ServiceConfig {
@@ -113,6 +143,7 @@ impl Default for ServiceConfig {
             enabled: true,
             header_patterns: vec![],
             banner_response: None,
+            obfuscation: ObfuscationConfig::default(),
         }
     }
 }

@@ -99,7 +99,7 @@ impl Controller {
 
         let handle = tokio::spawn(async move {
             if let Err(e) = NetworkListener::start_listening(copy, ip_addr).await {
-                error!("NetworkListener failed: {:?}", e);
+                error!("NetworkListener failure: {:?}", e);
             }
         });
 

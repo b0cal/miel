@@ -1,0 +1,69 @@
+name = "ssh"
+port = 2222
+protocol = "TCP"
+container_image = "minimal-ssh"
+enabled = true
+header_patterns = ["SSH-2.0"]
+banner_response = "SSH-2.0-OpenSSH_8.0"
+# Default credentials are miel:miel
+
+[obfuscation]
+enabled = true
+fake_hostname = "prod-web-01"
+system_uptime_days = 127
+fake_users = ["admin", "webuser", "dbadmin", "monitor"]
+fake_network_interfaces = ["eth0", "eth1"]
+
+# Fake processes to show in ps/top commands
+[[obfuscation.fake_processes]]
+name = "nginx"
+pid = 1234
+cpu_percent = 2.1
+memory_mb = 45
+command = "nginx: master process /usr/sbin/nginx"
+
+[[obfuscation.fake_processes]]
+name = "mysqld"
+pid = 1456
+cpu_percent = 0.8
+memory_mb = 128
+command = "/usr/sbin/mysqld --basedir=/usr"
+
+[[obfuscation.fake_processes]]
+name = "apache2"
+pid = 1789
+cpu_percent = 1.5
+memory_mb = 67
+command = "/usr/sbin/apache2 -DFOREGROUND"
+
+# Fake files to plant in the container
+[[obfuscation.fake_files]]
+path = "/var/log/nginx/access.log"
+content = """192.168.1.100 - - [04/Sep/2025:10:15:23 +0000] "GET / HTTP/1.1" 200 612 "-" "Mozilla/5.0"
+192.168.1.101 - - [04/Sep/2025:10:16:45 +0000] "GET /admin HTTP/1.1" 404 169 "-" "curl/7.68.0"
+192.168.1.102 - - [04/Sep/2025:10:17:12 +0000] "POST /login HTTP/1.1" 302 185 "/admin" "Mozilla/5.0"
+"""
+is_executable = false
+
+[[obfuscation.fake_files]]
+path = "/home/admin/.bash_history"
+content = """ls -la
+cd /var/log
+tail -f nginx/access.log
+sudo systemctl status nginx
+ps aux | grep mysql
+netstat -tulpn
+who
+uptime
+"""
+is_executable = false
+
+[[obfuscation.fake_files]]
+path = "/usr/local/bin/backup.sh"
+content = """#!/bin/bash
+# Daily backup script
+mysqldump -u backup_user -p database > /backups/db_$(date +%Y%m%d).sql
+tar -czf /backups/www_$(date +%Y%m%d).tar.gz /var/www/html
+echo "Backup completed at $(date)"
+"""
+is_executable = true

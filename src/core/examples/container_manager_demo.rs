@@ -39,6 +39,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         enabled: true,
         header_patterns: vec!["SSH-2.0".to_string()],
         banner_response: Some("SSH-2.0-OpenSSH_8.0".to_string()),
+        obfuscation: miel::configuration::types::ObfuscationConfig {
+            enabled: true,
+            fake_hostname: Some("prod-web-01".to_string()),
+            fake_processes: vec![
+                miel::configuration::types::FakeProcess {
+                    name: "nginx".to_string(),
+                    pid: Some(1234),
+                    cpu_percent: Some(2.1),
+                    memory_mb: Some(45),
+                    command: "nginx: master process /usr/sbin/nginx".to_string(),
+                },
+                miel::configuration::types::FakeProcess {
+                    name: "mysqld".to_string(),
+                    pid: Some(1456),
+                    cpu_percent: Some(0.8),
+                    memory_mb: Some(128),
+                    command: "/usr/sbin/mysqld --basedir=/usr".to_string(),
+                },
+            ],
+            fake_files: vec![miel::configuration::types::FakeFile {
+                path: "/var/log/nginx/access.log".to_string(),
+                content: Some(
+                    "192.168.1.100 - - [04/Sep/2025:10:15:23 +0000] \"GET / HTTP/1.1\" 200 612"
+                        .to_string(),
+                ),
+                size_bytes: None,
+                is_executable: false,
+            }],
+            fake_users: vec!["admin".to_string(), "webuser".to_string()],
+            fake_network_interfaces: vec!["eth0".to_string(), "eth1".to_string()],
+            system_uptime_days: Some(127),
+        },
     };
 
     let http_service = ServiceConfig {
@@ -49,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         enabled: true,
         header_patterns: vec!["GET".to_string(), "POST".to_string()],
         banner_response: Some("HTTP/1.1 200 OK\r\nServer: nginx/1.18.0".to_string()),
+        obfuscation: miel::configuration::types::ObfuscationConfig::default(),
     };
 
     // Create containers
