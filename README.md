@@ -113,7 +113,8 @@ source.
 
 ### Running `miel`
 
-> [!NOTE] super user rights are needed to process the service containers
+> [!NOTE]
+> super user rights are needed to process the service containers
 
 ```sh
 sudo miel <PATH_TO_CONFIG>
@@ -124,7 +125,6 @@ interface. The API is available at
 [http://localhost:3000/api](http://localhost:3000/api).
 
 > [!TIP] > **EXAMPLES:**
->
 > Get all sessions basic data
 >
 > ```sh
