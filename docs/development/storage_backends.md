@@ -1,6 +1,7 @@
 # Storage Backend Selection in Miel
 
-This document demonstrates how to use the new storage backend selection feature in Miel.
+This document demonstrates how to use the new storage backend selection feature
+in Miel.
 
 ## Overview
 
@@ -47,12 +48,12 @@ Use the `--storage-backend` flag when running the application:
 - **Format**: SQLite database
 - **Location**: `{storage_path}/miel.sqlite3`
 - **Pros**:
-    - Structured queries
-    - Better performance for large datasets
-    - ACID compliance
+  - Structured queries
+  - Better performance for large datasets
+  - ACID compliance
 - **Cons**:
-    - Less human-readable
-    - Requires SQLite tools for inspection
+  - Less human-readable
+  - Requires SQLite tools for inspection
 
 ### FileSystem Backend
 
@@ -69,12 +70,12 @@ Use the `--storage-backend` flag when running the application:
           └── meta.txt
   ```
 - **Pros**:
-    - Human-readable
-    - Easy to inspect and debug
-    - Simple backup/restore
+  - Human-readable
+  - Easy to inspect and debug
+  - Simple backup/restore
 - **Cons**:
-    - Slower for large datasets
-    - More disk space usage
+  - Slower for large datasets
+  - More disk space usage
 
 ## Examples
 
@@ -113,7 +114,8 @@ max_sessions = 50
 
 ## Migration Between Backends
 
-Currently, there's no automatic migration between storage backends. If you need to switch:
+Currently, there's no automatic migration between storage backends. If you need
+to switch:
 
 1. Stop the application
 2. Backup your current data
@@ -129,5 +131,5 @@ export MIEL_STORAGE_PATH=/custom/storage/path
 ./miel config.toml --storage-backend filesystem
 ```
 
-This will use `/custom/storage/path/file_storage/` for filesystem backend or `/custom/storage/path/miel.sqlite3` for
-database backend.
+This will use `/custom/storage/path/file_storage/` for filesystem backend or
+`/custom/storage/path/miel.sqlite3` for database backend.
