@@ -1,0 +1,35 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Performs both tilde and environment expansions in the default system context."><title>full in shellexpand - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="shellexpand" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../static.files/storage-4e99c027.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc fn"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../shellexpand/index.html">shellexpand</a><span class="version">3.1.1</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">full</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#examples" title="Examples">Examples</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="index.html">In crate shellexpand</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="index.html">shellexpand</a></div><h1>Function <span class="fn">full</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/shellexpand/funcs.rs.html#228-233">Source</a> </span></div><pre class="rust item-decl"><code>pub fn full&lt;SI&gt;(input: <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.reference.html">&amp;SI</a>) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.89.0/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.89.0/alloc/borrow/enum.Cow.html" title="enum alloc::borrow::Cow">Cow</a>&lt;'_, <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.str.html">str</a>&gt;, <a class="struct" href="struct.LookupError.html" title="struct shellexpand::LookupError">LookupError</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.89.0/std/env/enum.VarError.html" title="enum std::env::VarError">VarError</a>&gt;&gt;<div class="where">where
+    SI: <a class="trait" href="https://doc.rust-lang.org/1.89.0/core/convert/trait.AsRef.html" title="trait core::convert::AsRef">AsRef</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.str.html">str</a>&gt; + ?<a class="trait" href="https://doc.rust-lang.org/1.89.0/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a>,</div></code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Performs both tilde and environment expansions in the default system context.</p>
+<p>This function delegates to <a href="fn.full_with_context.html" title="fn shellexpand::full_with_context"><code>full_with_context()</code></a>, using the default system sources for both
+home directory and environment, namely <a href="../dirs/fn.home_dir.html" title="fn dirs::home_dir"><code>dirs::home_dir()</code></a> and <a href="https://doc.rust-lang.org/1.89.0/std/env/fn.var.html" title="fn std::env::var"><code>std::env::var()</code></a>.</p>
+<p>Note that variable lookup of unknown variables will fail with an error instead of, for example,
+replacing the unknown variable with an empty string. The author thinks that this behavior is
+more useful than the other ones. If you need to change it, use <a href="fn.full_with_context.html" title="fn shellexpand::full_with_context"><code>full_with_context()</code></a> or
+<a href="fn.full_with_context_no_errors.html" title="fn shellexpand::full_with_context_no_errors"><code>full_with_context_no_errors()</code></a> with an appropriate context function instead.</p>
+<p>This function behaves exactly like <a href="fn.full_with_context.html" title="fn shellexpand::full_with_context"><code>full_with_context()</code></a> in regard to tilde-containing
+variables in the beginning of the input string.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>std::env;
+
+env::set_var(<span class="string">"A"</span>, <span class="string">"a value"</span>);
+env::set_var(<span class="string">"B"</span>, <span class="string">"b value"</span>);
+
+<span class="kw">let </span>home_dir = dirs::home_dir()
+    .map(|p| p.display().to_string())
+    .unwrap_or_else(|| <span class="string">"~"</span>.to_owned());
+
+<span class="comment">// Performs both tilde and environment expansions using the system contexts
+</span><span class="macro">assert_eq!</span>(
+    shellexpand::full(<span class="string">"~/$A/${B}s"</span>).unwrap(),
+    <span class="macro">format!</span>(<span class="string">"{}/a value/b values"</span>, home_dir)
+);
+
+<span class="comment">// Unknown variables cause expansion errors
+</span><span class="macro">assert_eq!</span>(
+    shellexpand::full(<span class="string">"~/$UNKNOWN/$B"</span>),
+    <span class="prelude-val">Err</span>(shellexpand::LookupError {
+        var_name: <span class="string">"UNKNOWN"</span>.into(),
+        cause: env::VarError::NotPresent
+    })
+);</code></pre></div>
+</div></details></section></div></main></body></html>

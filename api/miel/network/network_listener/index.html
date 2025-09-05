@@ -1,0 +1,46 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Network Listener Module"><title>miel::network::network_listener - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="miel" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../../../static.files/storage-4e99c027.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../miel/index.html">miel</a><span class="version">1.0.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module network_<wbr>listener</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#network-listener-module" title="Network Listener Module">Network Listener Module</a><ul><li><a href="#architecture" title="Architecture">Architecture</a></li><li><a href="#usage" title="Usage">Usage</a></li></ul></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="../index.html">In miel::<wbr>network</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../index.html">miel</a>::<wbr><a href="../index.html">network</a></div><h1>Module <span>network_listener</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../src/miel/network/network_listener.rs.html#1-593">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="network-listener-module"><a class="doc-anchor" href="#network-listener-module">§</a>Network Listener Module</h2>
+<p>This module provides network listening capacities for handling incoming TCP connections and
+routing them to appropriate service based on detected protocol</p>
+<p>The main component is <a href="struct.NetworkListener.html" title="struct miel::network::network_listener::NetworkListener"><code>NetworkListener</code></a> which manages multiple TCP sockets, detects incoming
+service types, filters connections, and forwards valid sessions to the [<code>SessionManager</code>] via
+<a href="../types/struct.SessionRequest.html" title="struct miel::network::types::SessionRequest"><code>SessionRequest</code></a> through an async channel.</p>
+<h3 id="architecture"><a class="doc-anchor" href="#architecture">§</a>Architecture</h3><div class="example-wrap"><pre class="language-text"><code>┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Incoming        │───▶│ NetworkListener  │───▶│ SessionManager  │
+│ Connections     │    │                  │    │ (via mpsc)      │
+└─────────────────┘    │ - Service Detection   └─────────────────┘
+                       │ - Connection Filter
+                       │ - Protocol Analysis
+                       └──────────────────┘</code></pre></div><h3 id="usage"><a class="doc-anchor" href="#usage">§</a>Usage</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>tokio::sync::mpsc;
+<span class="kw">use </span>std::net::Ipv4Addr;
+<span class="kw">use </span>miel::configuration::types::ServiceConfig;
+<span class="kw">use </span>miel::network::network_listener::NetworkListener;
+<span class="kw">use </span>miel::error_handling::types::NetworkError;
+<span class="kw">use </span>std::net::SocketAddr;
+
+<span class="attr">#[tokio::main]
+</span><span class="kw">async fn </span>main() -&gt; <span class="prelude-ty">Result</span>&lt;(), NetworkError&gt; {
+    <span class="comment">// Create a channel for session requests
+    </span><span class="kw">let </span>(tx, rx) = mpsc::channel(<span class="number">100</span>);
+     
+    <span class="kw">let </span>bind_addr = SocketAddr::from(([<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>], <span class="number">0</span>));
+    <span class="comment">// Initialize the network listener
+    </span><span class="kw">let </span><span class="kw-2">mut </span>listener = NetworkListener::new(tx);
+     
+    <span class="comment">// Configure services to listen on
+    </span><span class="kw">let </span>services = <span class="macro">vec!</span>[
+        ServiceConfig { port: <span class="number">8080</span>, ..Default::default() },
+        ServiceConfig { port: <span class="number">8443</span>, ..Default::default() },
+    ];
+
+    <span class="comment">// Bind to the configured service
+    </span>listener.bind_services(<span class="kw-2">&amp;</span>services)<span class="question-mark">?</span>;
+
+    <span class="kw">let </span>copy = listener.extract_for_listening();
+
+    <span class="comment">// Start listening for connections
+    </span>NetworkListener::start_listening(copy, Ipv4Addr::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>)).<span class="kw">await</span><span class="question-mark">?</span>;
+
+    <span class="prelude-val">Ok</span>(())
+}</code></pre></div>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.NetworkListener.html" title="struct miel::network::network_listener::NetworkListener">Network<wbr>Listener</a></dt><dd>A network listener that manages multiple TCP socket and routes connections to services.</dd></dl></section></div></main></body></html>

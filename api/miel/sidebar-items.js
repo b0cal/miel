@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["main"]};
+window.SIDEBAR_ITEMS = {"mod":["configuration","container_management","controller","data_capture","error_handling","network","session_management","storage","web_interface"]};

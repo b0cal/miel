@@ -1,0 +1,1 @@
+searchState.loadedDescShard("serial_test", 0, "serial_test\nCheck if the current thread is holding a serial lock\nAllows for the creation of parallel Rust tests that won’…\nAllows for the creation of serialised Rust tests")

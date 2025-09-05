@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Direction","StdioStream"],"struct":["CaptureArtifacts"]};

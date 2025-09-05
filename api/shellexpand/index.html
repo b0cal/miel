@@ -1,0 +1,75 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Provides functions for performing shell-like expansions in strings."><title>shellexpand - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="shellexpand" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../static.files/storage-4e99c027.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../shellexpand/index.html">shellexpand</a><span class="version">3.1.1</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#structs">Crate Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1>Crate <span>shellexpand</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/shellexpand/lib.rs.html#1-100">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Provides functions for performing shell-like expansions in strings.</p>
+<p>In particular, the following expansions are supported:</p>
+<ul>
+<li>tilde expansion, when <code>~</code> in the beginning of a string, like in <code>"~/some/path"</code>,
+is expanded into the home directory of the current user;</li>
+<li>environment expansion, when <code>$A</code> or <code>${B}</code>, like in <code>"~/$A/${B}something"</code>,
+are expanded into their values in some environment.</li>
+</ul>
+<p>Environment expansion also supports default values with the familiar shell syntax,
+so for example <code>${UNSET_ENV:-42}</code> will use the specified default value, i.e. <code>42</code>, if
+the <code>UNSET_ENV</code> variable is not set in the environment.</p>
+<p>The source of external information for these expansions (home directory and environment
+variables) is called their <em>context</em>. The context is provided to these functions as a closure
+of the respective type.</p>
+<p>This crate provides both customizable functions, which require their context to be provided
+explicitly, and wrapper functions which use <a href="../dirs/fn.home_dir.html" title="fn dirs::home_dir"><code>dirs::home_dir()</code></a> and <a href="https://doc.rust-lang.org/1.89.0/std/env/fn.var.html" title="fn std::env::var"><code>std::env::var()</code></a>
+for obtaining home directory and environment variables, respectively.</p>
+<p>Also there is a “full” function which performs both tilde and environment
+expansion, but does it correctly, rather than just doing one after another: for example,
+if the string starts with a variable whose value starts with a <code>~</code>, then this tilde
+won’t be expanded.</p>
+<p>All functions return <a href="https://doc.rust-lang.org/1.89.0/alloc/borrow/enum.Cow.html" title="enum alloc::borrow::Cow"><code>Cow&lt;str&gt;</code></a> because it is possible for their input not to contain anything
+which triggers the expansion. In that case performing allocations can be avoided.</p>
+<p>Please note that by default unknown variables in environment expansion are left as they are
+and are not, for example, substituted with an empty string:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">fn </span>context(<span class="kw">_</span>: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Option</span>&lt;String&gt; { <span class="prelude-val">None </span>}
+
+<span class="macro">assert_eq!</span>(
+    shellexpand::env_with_context_no_errors(<span class="string">"$A $B"</span>, context),
+    <span class="string">"$A $B"
+</span>);</code></pre></div>
+<p>Environment expansion context allows for a very fine tweaking of how results should be handled,
+so it is up to the user to pass a context function which does the necessary thing. For example,
+<a href="fn.env.html" title="fn shellexpand::env"><code>env()</code></a> and <a href="fn.full.html" title="fn shellexpand::full"><code>full()</code></a> functions from this library pass all errors returned by <a href="https://doc.rust-lang.org/1.89.0/std/env/fn.var.html" title="fn std::env::var"><code>std::env::var()</code></a>
+through, therefore they will also return an error if some unknown environment
+variable is used, because <a href="https://doc.rust-lang.org/1.89.0/std/env/fn.var.html" title="fn std::env::var"><code>std::env::var()</code></a> returns an error in this case:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>std::env;
+
+<span class="comment">// make sure that the variable indeed does not exist
+</span>env::remove_var(<span class="string">"MOST_LIKELY_NONEXISTING_VAR"</span>);
+
+<span class="macro">assert_eq!</span>(
+    shellexpand::env(<span class="string">"$MOST_LIKELY_NONEXISTING_VAR"</span>),
+    <span class="prelude-val">Err</span>(shellexpand::LookupError {
+        var_name: <span class="string">"MOST_LIKELY_NONEXISTING_VAR"</span>.into(),
+        cause: env::VarError::NotPresent
+    })
+);</code></pre></div>
+<p>The author thinks that this approach is more useful than just substituting an empty string
+(like, for example, does Go with its <a href="https://golang.org/pkg/os/#ExpandEnv">os.ExpandEnv</a>
+function), but if you do need <code>os.ExpandEnv</code>-like behavior, it is fairly easy to get one:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>std::env;
+<span class="kw">use </span>std::borrow::Cow;
+
+<span class="kw">fn </span>context(s: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;Cow&lt;<span class="lifetime">'static</span>, str&gt;&gt;, env::VarError&gt; {
+    <span class="kw">match </span>env::var(s) {
+        <span class="prelude-val">Ok</span>(value) =&gt; <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(value.into())),
+        <span class="prelude-val">Err</span>(env::VarError::NotPresent) =&gt; <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(<span class="string">""</span>.into())),
+        <span class="prelude-val">Err</span>(e) =&gt; <span class="prelude-val">Err</span>(e)
+    }
+}
+
+<span class="comment">// make sure that the variable indeed does not exist
+</span>env::remove_var(<span class="string">"MOST_LIKELY_NONEXISTING_VAR"</span>);
+
+<span class="macro">assert_eq!</span>(
+    shellexpand::env_with_context(<span class="string">"a${MOST_LIKELY_NOEXISTING_VAR}b"</span>, context).unwrap(),
+    <span class="string">"ab"
+</span>);</code></pre></div>
+<p>The above example also demonstrates the flexibility of context function signatures: the context
+function may return anything which can be <code>AsRef</code>ed into a string slice.</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.LookupError.html" title="struct shellexpand::LookupError">Lookup<wbr>Error</a></dt><dd>Represents a variable lookup error.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.env.html" title="fn shellexpand::env">env</a></dt><dd>Performs the environment expansion using the default system context.</dd><dt><a class="fn" href="fn.env_with_context.html" title="fn shellexpand::env_with_context">env_<wbr>with_<wbr>context</a></dt><dd>Performs the environment expansion using the provided context.</dd><dt><a class="fn" href="fn.env_with_context_no_errors.html" title="fn shellexpand::env_with_context_no_errors">env_<wbr>with_<wbr>context_<wbr>no_<wbr>errors</a></dt><dd>Same as <a href="fn.env_with_context.html" title="fn shellexpand::env_with_context"><code>env_with_context()</code></a>, but forbids the variable lookup function to return errors.</dd><dt><a class="fn" href="fn.full.html" title="fn shellexpand::full">full</a></dt><dd>Performs both tilde and environment expansions in the default system context.</dd><dt><a class="fn" href="fn.full_with_context.html" title="fn shellexpand::full_with_context">full_<wbr>with_<wbr>context</a></dt><dd>Performs both tilde and environment expansion using the provided contexts.</dd><dt><a class="fn" href="fn.full_with_context_no_errors.html" title="fn shellexpand::full_with_context_no_errors">full_<wbr>with_<wbr>context_<wbr>no_<wbr>errors</a></dt><dd>Same as <a href="fn.full_with_context.html" title="fn shellexpand::full_with_context"><code>full_with_context()</code></a>, but forbids the variable lookup function to return errors.</dd><dt><a class="fn" href="fn.tilde.html" title="fn shellexpand::tilde">tilde</a></dt><dd>Performs the tilde expansion using the default system context.</dd><dt><a class="fn" href="fn.tilde_with_context.html" title="fn shellexpand::tilde_with_context">tilde_<wbr>with_<wbr>context</a></dt><dd>Performs the tilde expansion using the provided context.</dd></dl></section></div></main></body></html>

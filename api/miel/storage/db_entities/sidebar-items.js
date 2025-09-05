@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Column","PrimaryKey","Relation"],"mod":["artifacts","interactions"],"struct":["ActiveModel","ColumnIter","Entity","Model","PrimaryKeyIter","RelationIter"]};

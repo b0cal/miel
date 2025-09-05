@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":["all","any"],"mod":["backend","error","expr","extension","foreign_key","func","index","prepare","query","schema","table","token","types","value"]};

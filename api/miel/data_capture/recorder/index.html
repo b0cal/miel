@@ -1,0 +1,37 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Stream recording orchestration for a single session."><title>miel::data_capture::recorder - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="miel" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../../../static.files/storage-4e99c027.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../miel/index.html">miel</a><span class="version">1.0.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module recorder</a></h2><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="../index.html">In miel::<wbr>data_<wbr>capture</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../index.html">miel</a>::<wbr><a href="../index.html">data_capture</a></div><h1>Module <span>recorder</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../src/miel/data_capture/recorder.rs.html#1-371">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Stream recording orchestration for a single session.</p>
+<p>This module provides <code>StreamRecorder</code>, a small façade that ties together
+bidirectional TCP proxying (via <code>TcpCapture</code>) and best‑effort stdio/PTY
+snapshotting (via <code>StdioCapture</code>) for one honeypot session. It aggregates
+the resulting byte streams and metadata into <code>CaptureArtifacts</code> and persists
+them through the injected <code>Storage</code> implementation.</p>
+<p>Highlights</p>
+<ul>
+<li>Full‑duplex TCP proxy with per‑direction buffering and timestamps</li>
+<li>Graceful EOF propagation to avoid hangs (shutdown of the peer writer)</li>
+<li>Optional PTY snapshot for stdout/stderr capture</li>
+<li>Pluggable persistence through <code>Storage</code> (dependency injected)</li>
+<li>Rich logging at TRACE/DEBUG/INFO</li>
+</ul>
+<p>Minimal usage</p>
+
+<div class="example-wrap ignore"><a href="#" class="tooltip" title="This example is not tested">ⓘ</a><pre class="rust rust-example-rendered"><code><span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>tokio::net::TcpStream;
+<span class="kw">use </span>uuid::Uuid;
+<span class="kw">use </span>miel::data_capture::StreamRecorder;
+<span class="kw">use </span>miel::data_capture::CaptureArtifacts;
+
+<span class="comment">// Your Storage implementation just needs to persist/retrieve artifacts.
+</span><span class="kw">struct </span>MyStorage;
+<span class="kw">impl </span>miel::data_capture::Storage <span class="kw">for </span>MyStorage {
+    <span class="kw">fn </span>save_capture_artifacts(<span class="kw-2">&amp;</span><span class="self">self</span>, _a: <span class="kw-2">&amp;</span>CaptureArtifacts) -&gt; <span class="prelude-ty">Result</span>&lt;(), miel::error_handling::types::StorageError&gt; { <span class="prelude-val">Ok</span>(()) }
+    <span class="kw">fn </span>get_capture_artifacts(<span class="kw-2">&amp;</span><span class="self">self</span>, _id: Uuid) -&gt; <span class="prelude-ty">Result</span>&lt;CaptureArtifacts, miel::error_handling::types::StorageError&gt; { <span class="macro">todo!</span>() }
+}
+
+<span class="kw">let </span>storage: Arc&lt;<span class="kw">dyn </span>miel::data_capture::Storage&gt; = Arc::new(MyStorage);
+<span class="kw">let </span>recorder = StreamRecorder::new(Uuid::new_v4(), storage);
+
+<span class="comment">// Example sockets; in real code they come from your listener/container.
+</span><span class="kw">let </span>(client, server) = (TcpStream::connect(<span class="string">"127.0.0.1:1"</span>).<span class="kw">await</span><span class="question-mark">?</span>, TcpStream::connect(<span class="string">"127.0.0.1:2"</span>).<span class="kw">await</span><span class="question-mark">?</span>);
+<span class="kw">let _ </span>= recorder.start_tcp_proxy(client, server).<span class="kw">await</span>; <span class="comment">// ignore errors in example
+</span><span class="kw">let _ </span>= recorder.finalize_capture(); <span class="comment">// ignore errors in example</span></code></pre></div>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.StreamRecorder.html" title="struct miel::data_capture::recorder::StreamRecorder">Stream<wbr>Recorder</a></dt><dd>Orchestrates network and stdio capture for a single session.</dd></dl></section></div></main></body></html>
