@@ -7,7 +7,7 @@ import apiService from '../services/apiService.js'
 
 const Dashboard = () => {
   const [dashboardData, setDashboardData] = useState({
-    packetsPerHour: 4516,
+    packetsPerHour: 0,
     cpuUsage: 67,
     memoryUsage: 45,
     databaseStorage: 78,
@@ -30,7 +30,6 @@ const Dashboard = () => {
 
   const fetchNetworkActivity = async () => {
     try {
-      // Future: Replace with actual API call
       const data = await apiService.getByteTransferTimeline()
       setNetworkData(data)
     } catch (error) {
@@ -63,7 +62,7 @@ const Dashboard = () => {
     try {
       const avgPacketPerHour = await apiService.getAvgPacketPerHour()
       const activeConnections = await apiService.getNumberOfActiveSessions()
-      const _mostAttackedService = await apiService.getMostAttackedService()
+      const mostAttackedService = await apiService.getMostAttackedService()
       
       // Mock data update
       setDashboardData(prev => ({
@@ -73,7 +72,7 @@ const Dashboard = () => {
         memoryUsage: Math.floor(Math.random() * 30) + 35,
         databaseStorage: Math.floor(Math.random() * 20) + 70,
         activeConnections,
-        /*mostAttackedService,*/
+        mostAttackedService,
       }))
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
@@ -227,7 +226,7 @@ for Enhanced Learning`}
             {/* Packets per Hour */}
             <div className="dashboard-card p-6">
               <div className="flex justify-center mb-4">
-                <CircularProgress value={dashboardData.packetsPerHour} />
+                <CircularProgress value={dashboardData.packetsPerHour || 0} />
               </div>
               <p className="text-center text-orange-400">packet/hr</p>
             </div>
