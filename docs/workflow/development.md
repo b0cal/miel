@@ -16,19 +16,20 @@ The branching model is structured as followed:
     ├── feat
     │   ├── feat/feature1
     │   └── feat/feature2
-    └── release
 ```
 
 - `main`: Stores official release history, commits should be tagged with a
   version number (starting at v0.1). The branch must be protected
 - `dev`: Integration branch, created from main. The branch must also be
   protected
-- `release`: Once enough features in `develop`, fork a `release` branch off of
   `develop`, merge into `develop` and `main` when done. Naming convention is
   adjectives linked to honey texture
 - `feat`: Created from `develop`, merges into `develop` when completed
 - `hotfix`: When issue detected in `main` branch, create a hotfix branch from
   main, once completed, merge into both `develop` and `main`
+
+Once enough changes have been integrated into `dev` the branch is merged into
+`main`, built through CICD, tagged with a version number and released on GitHub.
 
 [More info here](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow)
 
@@ -51,7 +52,7 @@ With the following structural elements:
 - **BREAKING CHANGE**: commit with _BREAKING CHANGE_ `footer` or appends _!_
   after type/scope introduces a breaking API change. Can be part of any type
 - `types` other than _fix_ and _feat_ are allowed
-  - Non exhaustive list: _build_, _doc_, _refactor_, _test_
+    - Non exhaustive list: _build_, _doc_, _refactor_, _test_
 - `footers` other than _BREAKING CHANGE_ should follow a `key: value` format
 
 [More info](https://www.conventionalcommits.org/en/v1.0.0/#summary)
@@ -152,16 +153,16 @@ As shown in this diagram release process should be as followed:
 
 1. Fork a `release` from the `dev` branch once enough features are functioning
 2. Make last changes to the `release branch`
-   - No new features should be added
-   - Only bug-fixes, documentation generation
-   - Or other release-oriented tasks
+    - No new features should be added
+    - Only bug-fixes, documentation generation
+    - Or other release-oriented tasks
 3. Once ready to ship, tag the last commit of the branch, as explained in
    [the documentation](/docs/development/ci_cd.md).
 4. Create a new release from the
    [Create release](https://github.com/b0cal/miel/releases/new) page
-   - Select the release branch
-   - Pick the tag you created on point 3.
-   - Fill the release note with the template
+    - Select the release branch
+    - Pick the tag you created on point 3.
+    - Fill the release note with the template
 
 ## Testing expectations
 
