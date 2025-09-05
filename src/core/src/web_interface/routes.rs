@@ -6,6 +6,7 @@ use warp::{http::StatusCode, reply, Filter, Rejection, Reply};
 
 use super::ApiError;
 use crate::storage::storage_trait::Storage;
+use mime_guess;
 
 #[derive(RustEmbed)]
 #[folder = "$CARGO_MANIFEST_DIR/../webui/dist"]

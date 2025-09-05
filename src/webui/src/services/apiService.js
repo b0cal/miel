@@ -4,7 +4,6 @@ const API_BASE_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:3000
 
 class ApiService {
   constructor() {
-    console.error('API_BASE_URL value : ', API_BASE_URL)
     this.baseURL = API_BASE_URL
   }
 
@@ -26,7 +25,6 @@ class ApiService {
       }
 
       const text = await response.text()
-      console.error('Raw response:', text)
       
       return JSON.parse(text)
     } catch (error) {
