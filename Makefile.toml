@@ -18,7 +18,7 @@ args = ["clean"]
 [tasks.core-test]
 description = "Run Rust tests"
 cwd = "src/core"
-script = ["cargo test"]
+script = ["cargo test --release"]
 
 [tasks.webui-test]
 description = "Run Web UI tests"

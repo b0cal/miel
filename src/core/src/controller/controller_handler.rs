@@ -7,6 +7,7 @@ use crate::session_manager::SessionManager;
 use crate::storage::database_storage::DatabaseStorage;
 use crate::storage::file_storage::FileStorage;
 use crate::storage::storage_trait::Storage;
+use crate::web_interface::WebServer;
 use log::{error, info};
 use std::net::Ipv4Addr;
 use std::str::FromStr;
@@ -47,6 +48,13 @@ impl Controller {
                 )
             }
         };
+
+        if config.web_ui_enabled {
+            let ws = WebServer::new(storage.clone());
+            tokio::spawn(async move {
+                let _ = ws.start(config.web_ui_port).await;
+            });
+        }
 
         let session_manager = SessionManager::new(
             container_manager.clone(),

@@ -1,6 +1,12 @@
 use std::fmt;
 
 #[derive(Debug)]
+pub enum WebError {
+    RequestFailed,
+    StartFailed(String),
+}
+
+#[derive(Debug)]
 pub enum ConfigError {
     IoError(std::io::Error),
     TomlError(String),

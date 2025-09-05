@@ -1,23 +1,85 @@
 {
   "name": "miel-webui",
+  "version": "0.1.0",
+  "description": "Web UI for MIEL (Monitoring Infrastructure for Enhanced Learning) network monitoring system",
+  "type": "module",
   "engines": {
-    "npm": ">=10.0.0",
-    "node": ">=22.18.0"
+    "npm": ">=9.0.0",
+    "node": ">=18.0.0"
   },
   "scripts": {
-    "dev": "node --watch main.js",
-    "test": "mocha **/*.test.js",
-    "build": "echo 'miel-webui build script'",
-    "lint": "eslint .",
-    "format": "prettier --write ."
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "mocha ./*.test.js",
+    "test:watch": "mocha **/*.test.js --watch",
+    "lint": "eslint . --ext js,jsx,ts,tsx",
+    "lint:fix": "eslint . --ext js,jsx,ts,tsx --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "classnames": "^2.5.1",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.294.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.16",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
     "chai": "^6.0.0",
     "eslint": "^9.33.0",
     "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.12",
     "globals": "^16.3.0",
     "mocha": "^11.7.1",
-    "prettier": "^3.6.2"
-  }
+    "postcss": "^8.4.47",
+    "prettier": "^3.6.2",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3",
+    "vite": "^7.1.4"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "proxy": "http://localhost:3000",
+  "keywords": [
+    "monitoring",
+    "network",
+    "security",
+    "dashboard",
+    "react",
+    "rust",
+    "honeypot"
+  ],
+  "author": "MIEL Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/miel-webui"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/miel-webui/issues"
+  },
+  "homepage": "https://github.com/your-org/miel-webui#readme"
 }

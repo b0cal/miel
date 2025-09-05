@@ -47,6 +47,10 @@ jobs:
       - name: Install npm dependencies
         run: npm ci --prefix src/webui
 
+      - name: Build node project
+        run: npm run build
+        working-directory: src/webui
+
       - name: Lint and format code
         run: cargo make code-quality
 
@@ -79,6 +83,13 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: src/webui/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci --prefix src/webui
+
+      - name: Build node project
+        run: npm run build
+        working-directory: src/webui
 
       - name: Run Rust tests
         run: cargo make core-test

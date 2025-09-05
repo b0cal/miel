@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* FiraCode Font Face Declarations */
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/FiraCode-Light.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/FiraCode-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/FiraCode-Medium.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/FiraCode-Bold.woff2') format('woff2');
+}
+
+/* Base styles */
+@layer base {
+  html {
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+  
+  body {
+    margin: 0;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f3f4f6;
+  }
+
+  code, pre {
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Ensure all text elements use FiraCode */
+  h1, h2, h3, h4, h5, h6, p, span, div, a, button, input, textarea, select {
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+}
+
+/* Component layer for reusable component classes */
+@layer components {
+  .dashboard-card {
+    @apply bg-black text-white rounded-lg shadow-lg;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+  
+  .dashboard-button {
+    @apply bg-gray-700 hover:bg-gray-800 text-white font-medium py-2 px-4 rounded transition-colors duration-200;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+  
+  .metric-card {
+    @apply bg-black p-3 rounded text-center hover:bg-gray-800 transition-colors cursor-pointer;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+  
+  .threat-row {
+    @apply flex justify-between text-sm py-1 hover:bg-gray-800 px-2 rounded transition-colors;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+}
+
+/* Utility layer for custom utilities */
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0,0,0,0.10);
+  }
+  
+  .text-shadow-lg {
+    text-shadow: 0 15px 30px rgba(0,0,0,0.15);
+  }
+  
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #374151 #1f2937;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: #252a33;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #121212;
+    border-radius: 3px;
+  }
+
+  /* Force FiraCode on all elements if needed */
+  .force-fira-code * {
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  }
+}

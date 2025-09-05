@@ -27,3 +27,6 @@ sea-orm = { version = "1.1.15", default-features = false, features = [
   "runtime-tokio-rustls",
   "macros",
 ] }
+warp = { version = "0.4", features = ["server"] }
+rust-embed =  { version = "8.7.2", features = ["interpolate-folder-path", "debug-embed"] }
+mime_guess = "2.0"
