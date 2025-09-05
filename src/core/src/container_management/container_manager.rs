@@ -10,6 +10,7 @@ use tokio::process::Command;
 use uuid::Uuid;
 
 use crate::configuration::types::ServiceConfig;
+use crate::container_management::obfuscation::ObfuscationManager;
 use crate::container_management::types::{ContainerHandle, ContainerStats, Runtime};
 use crate::error_handling::types::ContainerError;
 
@@ -290,6 +291,9 @@ impl ContainerManager {
         self.setup_container_rootfs(&container_path, service_config)
             .await?;
 
+        // Apply obfuscation enhancements to the container
+        ObfuscationManager::setup_obfuscation(&container_path, &service_config.obfuscation)?;
+
         // Prepare systemd-nspawn command
         let mut cmd = Command::new("systemd-nspawn");
         cmd.arg("--directory")
@@ -405,7 +409,7 @@ impl ContainerManager {
                     // Also write to the unified log file
                     if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&log_path) {
                         use std::io::Write;
-                        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+                        let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
                         let _ = writeln!(file, "[{}] [CONTAINER] {}", timestamp, line);
                         let _ = file.flush();
                     }
@@ -674,7 +678,7 @@ if [ -x "/bin/bash" ]; then
   # Provide log path to the rcfile without risking premature expansion
   export MIEL_LOG_PATH="{log_path}"
   # Install a literal rcfile that logs each command via DEBUG trap
-  cat >/usr/local/etc/miel_bashrc <<'BASHRC'
+  cat >/tmp/miel_bashrc <<'BASHRC'
 log_bash_command() {{
   local c="$BASH_COMMAND"
   local TS="$(date '+%Y-%m-%d %H:%M:%S UTC')"
@@ -682,7 +686,7 @@ log_bash_command() {{
 }}
 trap 'log_bash_command' DEBUG
 BASHRC
-  exec /bin/bash --rcfile /usr/local/etc/miel_bashrc
+  exec /bin/bash --rcfile /tmp/miel_bashrc
 else
   exec /bin/sh
 fi
@@ -831,7 +835,7 @@ PYEOF
         // Write initial log header
         use std::io::Write;
         let mut file_writer = &log_file;
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+        let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         writeln!(
             file_writer,
             "=== Container {} Activity Log Started at {} ===",

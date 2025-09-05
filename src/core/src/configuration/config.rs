@@ -351,6 +351,7 @@ impl Default for Config {
                     enabled: true,
                     header_patterns: vec![],
                     banner_response: None,
+                    obfuscation: ObfuscationConfig::default(),
                 },
                 ServiceConfig {
                     name: "http".to_string(),
@@ -360,6 +361,7 @@ impl Default for Config {
                     enabled: true,
                     header_patterns: vec![],
                     banner_response: None,
+                    obfuscation: ObfuscationConfig::default(),
                 },
             ],
             bind_address: "0.0.0.0".to_string(),
@@ -388,6 +390,7 @@ impl Config {
             enabled: true,
             header_patterns: vec!["header1".to_string()],
             banner_response: Option::default(),
+            obfuscation: ObfuscationConfig::default(),
         }
     }
 
@@ -757,7 +760,9 @@ mod tests_from_file {
             enabled = true
             header_patterns = []
             banner_response = "DNS Server v1.0"
-        "#;
+
+            [obfuscation]
+            enabled = false        "#;
         write_toml_file(&services_dir.join("dns.toml"), service1);
 
         // Second service
@@ -768,6 +773,9 @@ mod tests_from_file {
             container_image = "ftp-container"
             enabled = false
             header_patterns = ["USER", "PASS"]
+
+            [obfuscation]
+            enabled = false
         "#;
         write_toml_file(&services_dir.join("ftp.toml"), service2);
 

@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::configuration::{Protocol, ServiceConfig};
+    use crate::configuration::types::ObfuscationConfig;
     use crate::container_management::{ContainerHandle, ContainerStats};
     use chrono::Utc;
 
@@ -14,6 +15,7 @@ mod tests {
             enabled: true,
             header_patterns: vec![format!("{}-pattern", name)],
             banner_response: Some(format!("{} banner", name)),
+            obfuscation: ObfuscationConfig::default(),
         }
     }
 
@@ -26,6 +28,45 @@ mod tests {
             enabled: true,
             header_patterns: vec![format!("{}-pattern", name)],
             banner_response: Some(format!("{} banner", name)),
+            obfuscation: ObfuscationConfig::default(),
+        }
+    }
+
+    // Helper to create a service config with obfuscation enabled
+    fn obfuscated_svc(name: &str, port: u16) -> ServiceConfig {
+        use crate::configuration::types::{FakeProcess, FakeFile};
+        ServiceConfig {
+            name: name.to_string(),
+            port,
+            protocol: Protocol::TCP,
+            container_image: format!("test-{}", name),
+            enabled: true,
+            header_patterns: vec![format!("{}-pattern", name)],
+            banner_response: Some(format!("{} banner", name)),
+            obfuscation: ObfuscationConfig {
+                enabled: true,
+                fake_hostname: Some(format!("test-{}-server", name)),
+                fake_processes: vec![
+                    FakeProcess {
+                        name: "nginx".to_string(),
+                        pid: Some(1234),
+                        cpu_percent: Some(2.1),
+                        memory_mb: Some(45),
+                        command: "nginx: master process".to_string(),
+                    },
+                ],
+                fake_files: vec![
+                    FakeFile {
+                        path: "/var/log/test.log".to_string(),
+                        content: Some("test log content".to_string()),
+                        size_bytes: None,
+                        is_executable: false,
+                    },
+                ],
+                fake_users: vec!["admin".to_string(), "webuser".to_string()],
+                fake_network_interfaces: vec!["eth0".to_string()],
+                system_uptime_days: Some(100),
+            },
         }
     }
 

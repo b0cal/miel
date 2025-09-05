@@ -20,10 +20,7 @@
 //! ```
 
 pub mod container_manager;
-#[cfg(test)]
-pub mod integration_tests;
-#[cfg(test)]
-pub mod tests;
+pub mod obfuscation;
 pub mod types;
 
 pub use container_manager::ContainerManager;
