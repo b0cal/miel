@@ -69,6 +69,13 @@ jobs:
           workspaces: |
             src/core -> src/core/target
 
+      - name: Install npm dependencies
+        run: npm ci --prefix src/webui
+
+      - name: Build node project
+        run: npm run build
+        working-directory: src/webui
+
       - name: Build Rust API docs
         run: cargo make core-doc
 
