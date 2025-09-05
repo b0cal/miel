@@ -55,11 +55,12 @@ Use the `--storage-backend` flag when running the application:
   - Less human-readable
   - Requires SQLite tools for inspection
 
-### FileSystem Backend
+### Filesystem Backend
 
 - **Format**: Human-readable files
 - **Structure**:
-  ```
+
+  ```txt
   {storage_path}/file_storage/
   ├── sessions/           # Session metadata (.session files)
   ├── interactions/       # Raw interaction data (.bin files)
@@ -69,6 +70,7 @@ Use the `--storage-backend` flag when running the application:
           ├── stdio_capture.csv
           └── meta.txt
   ```
+
 - **Pros**:
   - Human-readable
   - Easy to inspect and debug
