@@ -19,7 +19,7 @@
 - Link a database to store paquet trace, shell interactions, metadata, etc.
 - Ships with pre-filled ssh and http configuration files.
 
-## Why?
+### Why?
 
 Honeypots can be used in two situations. First to deceive attackers and avoid
 real infrastructure to be compromised. Secondly to intercept and retain
@@ -35,82 +35,134 @@ need to be secured.
 serving the corresponding service that matches the attacker's expectations,
 providing richer interaction data for analysis.
 
-## How?
+### How?
 
 - Rust🦀 guarantees us memory safety without performance cost
-- [tokio🗼](https://tokio.rs/) asynchronous runtime performs efficient async.
+- [Tokio🗼](https://tokio.rs/) asynchronous runtime performs efficient async.
   I/O, supports large amount of protocols and has built-in security features
   such as robust timeout handling preventing resource exhaustion.
-- [systemd-nspawn](https://wiki.archlinux.org/title/Systemd-nspawn) handles the
-  containerization of the services.
+- [`systemd-nspawn`](https://wiki.archlinux.org/title/Systemd-nspawn) handles
+  the containerization of the services.
 
 > These are the main components used in the project, for a more exhaustive list,
 > see the [architecture](/doc/research/architecture.md#rust-libraries)
 > description
 
-## 🍯 Build and start
+## 🍯 Usage
 
-### Pre-requisit
+### Prerequisites
 
-- Debian/Fedora (x86_64)
-- systemd-nspawn
+- A `x64` Debian based OS (also works on Fedora)
+- `systemd-nspawn` (installable with `sudo apt install systemd-nspawn`)
+- NodeJS version 22+
+- Rust version 1.89
+
+If you need to install these dependencies, follow
+[the development guide](https://github.com/b0cal/miel/tree/main/DEVELOPEMENT.md)
+
+### Configuration
+
+The configuration file is in TOML format. A sample configuration file is
+available in `/example/config/config.toml`. All modifiable parameters are
+documented there.
+
+Example service configurations are available at
+[https://github.com/b0cal/miel/tree/main/example/config/services](https://github.com/b0cal/miel/tree/main/example/config/services).
+
+Alternatively, some environment variables are available. These take precedence
+over file-based configuration. The variables are the following:
+
+```txt
+RUST_LOG=info
+MIEL_STORAGE_PATH=./storage
+SERVICE_DIR=./services
+```
+
+A complete `miel` command to run the program from the `src/core` with
+environment variables might look something like this:
+
+```sh
+RUST_LOG=debug \
+SERVICE_DIR=../../example/config/services \
+sudo target/release/miel ../../example/config/config.toml
+```
 
 ### Installation
 
-1. Download the latest release from the [Releases](https://github.com/b0cal/miel/releases) tab
+Ensure the prerequisites are met, then either download a release or build from
+source.
 
-  or
+#### From GitHub Releases
 
-  Clone the project to build from source
- ```sh
-git clone https://github.com/b0cal/miel.git
+1. Download the latest release from the
+   [Releases](https://github.com/b0cal/miel/releases) tab.
+2. Fetch the
+   [default configuration](https://github.com/b0cal/miel/blob/main/example/config/config.toml)
+   from the repository.
 
-cd miel/src/core
+#### Build from source
 
-cargo build
-```
+1. Clone the project to build from source
+   ```sh
+   git clone https://github.com/b0cal/miel.git
+   cd miel
+   cargo make prod
+   ```
+   The executable can then be found at `/src/core/target/release/miel`
+2. The default configuration is available in `/example/config/config.toml`
 
-2. At the first start-up an example config will be generated in `example/template.toml`. Feel free to play with it and use it to start the app
-> [!NOTE]
-> super user rights are needed to process the service containers
+### Running `miel`
+
+> [!NOTE] super user rights are needed to process the service containers
+
 ```sh
 sudo miel <PATH_TO_CONFIG>
 ```
 
-3. If you enabled the web interface go on http://localhost:3000 to view the dashboard or use the documented [web API](./docs/development/web_api.md) to fetch the data collected for further analysis
+Then navigate to [http://localhost:3000](http://localhost:3000) to view the web
+interface. The API is available at
+[http://localhost:3000/api](http://localhost:3000/api).
 
-> [!TIP]
->**EXAMPLES:**
+> [!TIP] > **EXAMPLES:**
 >
 > Get all sessions basic data
+>
 > ```sh
 > wget http://localhost:3000/api/sessions
 > ```
-> 
+>
 > Get session data by id
+>
 > ```sh
 > wget http://localhost:3000/api/sessions/:id/data)
 > ```
 >
 > Get sessions artifact by id
+>
 > ```sh
 > wget http://localhost:3000/api/sessions/:id/artifacts)
 > ```
 
+## 💻 Development
 
-## Known issues
+See [DEVELOPMENT.md](DEVELOPMENT.md) and refer to the documentation in `/docs`.
+
+## 🔨 Contributing
+
+Please see
+[CONTRIBUTING](https://github.com/b0cal/miel?tab=contributing-ov-file) tab.
+
+## 🚩 Known issues
 
 - If the web application crashes it panics and stops the application
-- If the app is stopped and restarted too fast the binding ports could be unavailable for a bit.
-  - **Workaround**: Just wait for the timeout for the port to be available again (approx. 1 min)
+- If the app is stopped and restarted too fast the binding ports could be
+  unavailable for a bit.
+  - **Workaround**: Just wait for the timeout for the port to be available again
+    (approx. 1 min)
 
-## Further improvements
+## 🛣️ Further improvements
 
-- Support [oci](opencontainers.org) container images
-- Allow UDP based services
-- Allow hotswapping services from the dashboard
-- More comprehensive filtering solution on the dashboard
-
-## Contributing
-
-Please see [CONTRIBUTING](https://github.com/b0cal/miel?tab=contributing-ov-file) tab.
+- Support [OCI](opencontainers.org) container images
+- Enhance support for UDP based services
+- Control services from the dashboard
+- Implement a comprehensive filtering solution on the dashboard
